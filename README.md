@@ -1,1 +1,2 @@
-# dacon_block
+# skeleton-code
+skeleton code

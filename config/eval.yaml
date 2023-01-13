@@ -1,0 +1,17 @@
+results_dir: "./exp/"
+wandb_opt: False
+
+data_dir:
+  block_test: "/nas/home/jihyokim/jm/dacon_block/data/test.csv"
+  block_submission: "/nas/home/jihyokim/jm/dacon_block/data/sample_submission.csv"
+
+
+eval:
+  trained_model: '/nas/home/jihyokim/jm/dacon_block/exp/train/daconBlock_5.pth'
+  save_dir_name: 'eval'
+  batch_size: 128
+  num_workers: 4
+  data:
+    img_size: 224
+
+
