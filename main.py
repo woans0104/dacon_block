@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import os
 import cv2
+from tqdm import tqdm
+from collections import defaultdict
 
 import torch
 import torch.nn as nn
@@ -28,6 +30,7 @@ from config.load_config import load_yaml, DotDict
 import warnings
 warnings.filterwarnings(action='ignore')
 
+from merge_data import merge_images
 
 # Fixed RandomSeed
 def seed_everything(seed):
@@ -156,19 +159,100 @@ def validation(model, criterion, val_loader, device):
 
 
 def main(config):
-
+    delete_merge_folder = config.generating.delete_merge_folder
+    train_generate_num = config.generating.train_generate_num
+    val_generate_num = config.generating.val_generate_num
+    all_generate_num = train_generate_num+val_generate_num 
+    save_merged_folder = config.generating.folder_name
+    train_one_sample_num = config.generating.train_one_sample_num
+    val_one_sample_num = config.generating.val_one_sample_num
+    all_one_sample_num = train_one_sample_num + val_one_sample_num
+    
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
     seed_everything(config.train.seed) # Seed 고정
-
+    
+    labels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']
     # Data Load
     # Train / Validation Split
     df = pd.read_csv(config.data_dir.block_train)
+    merge_df = pd.DataFrame(columns=df.columns)
+    if delete_merge_folder:
+        # make merge data
+
+        temp_df = df.copy()
+        sums = np.sum(temp_df[labels], axis=1)
+        temp_df['label_sum'] = sums
+
+        for_merge_inds = []
+        for label in labels:
+            inds = temp_df[(temp_df['label_sum']==1)&(temp_df[label]==1)].index.tolist()[:all_one_sample_num]
+            for_merge_inds += inds
+
+        for_merge_df = temp_df.loc[for_merge_inds,:]
+        df = df.drop(for_merge_inds, axis=0)
+
+        merged_folder = f'./data/{save_merged_folder}'
+        if os.path.isdir(merged_folder):
+            shutil.rmtree(merged_folder)
+
+        os.mkdir(merged_folder)
+        
+    else:
+        pass
+
     df = df.sample(frac=1)
     train_len = int(len(df) * 0.8)
     train_data = df[:train_len]
     val_data = df[train_len:]
 
+    ids = []
+    img_paths = []
+    temp_label_dict = {}
+    for t_label in labels:
+        temp_label_dict[t_label] = [0]*(all_generate_num)
+    generate_obj = merge_images(for_merge_df)
+
+    for i in tqdm(range(train_generate_num)):
+        filename = f'MERGE_{i}'
+        img_path = f'{merged_folder}/{filename}.jpg'
+        k = np.random.randint(7,10)
+        temp_labels = random.sample(labels, k)
+        for temp_label in temp_labels:
+            temp_label_dict[temp_label][i] = 1
+        
+        merge_image = generate_obj.make_new_data(target_labels=temp_labels,
+                                                random_indices=[k for k in range(train_one_sample_num)])
+        
+        
+        
+        cv2.imwrite(img_path, merge_image)
+        ids.append(f'{filename}')
+        img_paths.append(f'{save_merged_folder}/{filename}.jpg')
+    
+    
+    for i in tqdm(range(train_generate_num, all_generate_num)):
+        filename = f'MERGE_{i}'
+        img_path = f'{merged_folder}/{filename}.jpg'
+        k = np.random.randint(7,10)
+        temp_labels = random.sample(labels, k)
+        for temp_label in temp_labels:
+            temp_label_dict[temp_label][i] = 1
+        merge_image = generate_obj.make_new_data(target_labels=temp_labels,
+                                                random_indices=[k for k in range(train_one_sample_num, all_one_sample_num)])
+        cv2.imwrite(img_path, merge_image)
+        ids.append(f'{filename}')
+        img_paths.append(f'{save_merged_folder}/{filename}.jpg')
+    
+    merge_df['id'] = ids
+    merge_df['img_path'] = img_paths
+    for t_label in labels:
+        merge_df[t_label] = temp_label_dict[t_label]
+
+    merge_df.index = [i for i in range(len(df), len(df)+(all_generate_num))]
+    
+    train_data = pd.concat([train_data, merge_df.iloc[:train_generate_num]], axis=0)
+    val_data = pd.concat([val_data, merge_df.iloc[train_generate_num:all_generate_num]], axis=0)
 
     # Data Preprocessing
 
@@ -190,7 +274,6 @@ def main(config):
                                             max_pixel_value=255.0, always_apply=False, p=1.0),
                                 ToTensorV2()
                                 ])
-
 
     train_dataset = CustomDataset(train_data['img_path'].values, train_labels, train_transform)
     train_loader = DataLoader(train_dataset, batch_size = config.train.batch_size, shuffle=True,

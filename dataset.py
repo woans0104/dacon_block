@@ -13,7 +13,7 @@ class CustomDataset(Dataset):
         self.img_path_list = img_path_list
         self.label_list = label_list
         self.transforms = transforms
-        self.data_dir = "/nas/home/jihyokim/jm/dacon_block/data"
+        self.data_dir = "./data"
 
     def __getitem__(self, index):
         img_path = os.path.join(self.data_dir,self.img_path_list[index])

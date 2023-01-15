@@ -2,13 +2,13 @@ results_dir: "./exp/"
 wandb_opt: False
 
 data_dir:
-  block_train: "/nas/home/jihyokim/jm/dacon_block/data/train.csv"
+  block_train: "./data/train.csv"
 
 
 train:
   seed: 41
   epoch: 5
-  batch_size: 256
+  batch_size: 4
   lr: 0.0003
   num_workers: 4
   data:
