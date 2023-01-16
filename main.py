@@ -40,9 +40,12 @@ def seed_everything(seed):
     torch.backends.cudnn.benchmark = True
 
 
-def get_labels(df):
-    return df.iloc[:,2:].values
+# def get_labels(df):
+#     import ipdb;ipdb.set_trace()
+#     return df.iloc[:,2:].values
 
+def get_labels(df):
+    return df.iloc[:,2:-1].values
 
 
 # train / validation
@@ -165,10 +168,33 @@ def main(config):
     # Train / Validation Split
     df = pd.read_csv(config.data_dir.block_train)
     df = df.sample(frac=1)
-    train_len = int(len(df) * 0.8)
-    train_data = df[:train_len]
-    val_data = df[train_len:]
 
+
+    # train / val split
+
+    # train_len = int(len(df) * 0.8)
+    # train_data = df[:train_len]
+    # val_data = df[train_len:]
+
+    #-----------------------------------------------------------------------------#
+    val_idx =[]
+    #val_1 = df[df["SUM"] <= 3].sample(n=1000, random_state=config.train.seed).index.tolist()
+    val_2 = df[(df["SUM"] >= 4) & (df["SUM"] <=5)].sample(n=1000, random_state=config.train.seed).index.tolist()
+    val_3 = df[df["SUM"] >= 6].sample(n=1000, random_state=config.train.seed).index.tolist()
+
+    #val_idx.extend(val_1)
+    val_idx.extend(val_2)
+    val_idx.extend(val_3)
+    val_idx.sort()
+
+
+    val_data = df.loc[val_idx]
+    df.drop(val_data.index, inplace=True)
+    train_data = df
+
+    print("val_data")
+    print(val_idx[:10])
+    # -----------------------------------------------------------------------------#
 
     # Data Preprocessing
 

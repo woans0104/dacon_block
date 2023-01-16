@@ -1,4 +1,6 @@
 
+import cv2
+import numpy as np
 from collections import OrderedDict
 
 def copyStateDict(state_dict):
@@ -11,3 +13,11 @@ def copyStateDict(state_dict):
         name = ".".join(k.split(".")[start_idx:])
         new_state_dict[name] = v
     return new_state_dict
+
+
+def random_label(labels, min_num = 4 , sort=False):
+    rand_num = np.random.randint(min_num, len(labels)+1)
+    rand_label = np.random.choice(labels,rand_num, replace=False)
+    if sort :
+        rand_label.sort()
+    return rand_label
