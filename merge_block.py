@@ -10,6 +10,8 @@ class merge_images:
     def __init__(self, train_df, board_size=2000, random_seed=42):
         self.train_df = train_df
         self.board_size = board_size
+        #------------------------------------------------------------------#
+        # 수정 : random seed 주석처리
         #self.random_seed = random_seed
         #random.seed(self.random_seed)
         #np.random.seed(self.random_seed)
@@ -55,6 +57,11 @@ class merge_images:
                       target_labels=['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'],
                       block_size=[200, 250],  # min max
                       height=4, width=4, filter_horizon=True):
+
+        #------------------------------------------------------------------#
+        # 수정 : block_size min max로 범위 지정하여 랜덤하게 적용
+
+
 
         new_board = np.full((self.board_size, self.board_size, 3), 255).astype('uint8')
         coor_dict = {(0, 0): {'x': 500, 'y': self.board_size}}
@@ -195,11 +202,14 @@ class merge_images:
         up_y = np.max(y_coors)
         bbox = new_board[left_x:right_x, down_y:up_y, :]
 
+        #------------------------------------------------------------------#
+        # 수정 : block_size min max로 범위 지정하여 랜덤하게 적용
+
         if isinstance(block_size, list):
             size = np.random.choice(np.arange(block_size[0], block_size[1], 10))
         else:
             size = block_size
-        print(size)
+
         bbox = cv2.resize(bbox, (size, size))
 
         back_ground = np.full((400, 400, 3), 255)
@@ -240,7 +250,7 @@ if __name__ == '__main__':
     for idx in range(num_data):
 
         target_labels = random_label(labels, sort=True)
-        print(target_labels)
+
         generate_obj = merge_images(train_df)
         new_image, label_final = generate_obj.make_new_data(target_labels=target_labels, block_size=[210, 250])
 
