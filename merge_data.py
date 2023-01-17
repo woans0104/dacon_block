@@ -75,10 +75,10 @@ class merge_images:
             
             for j in range(height):
                 
-                t_label = target_labels[count]
-                count += 1
                 if count>=stop_count:
                     break
+                t_label = target_labels[count]
+                count += 1
                 
                 if isinstance(random_indices, list):
                     random_row_num = random.choice(random_indices)

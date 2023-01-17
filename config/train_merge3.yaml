@@ -17,8 +17,13 @@ train:
 
 generating:
   delete_merge_folder: True
-  train_generate_num_list: [0,0,0,0,0,0,0,0]
-  val_generate_num_list: [0,0,0,0,0,3000,3000,3000,3000]
-  folder_name: merged1
+  train_generate_num_list: [0,0,0,0,1,1,1,1,1,1]
+  val_generate_num_list: [0,0,0,0,0,1,1,1,1,1]
+  folder_name: merged3
   train_one_sample_num: 20
   val_one_sample_num: 10
+  same_class_generate:
+    option: True
+    ratio: 0.5
+    over_num: 6
+
