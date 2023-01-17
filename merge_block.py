@@ -1,4 +1,6 @@
-
+import os
+import pandas as pd
+from utils import random_label
 import cv2
 import numpy as np
 import random
@@ -7,14 +9,13 @@ from collections import OrderedDict
 
 class merge_images:
 
-    def __init__(self, train_df, board_size=2000, random_seed=42):
+    def __init__(self, train_df, board_size=2000, random_seed=42, train_image_path='./data/train'):
         self.train_df = train_df
         self.board_size = board_size
-        #------------------------------------------------------------------#
-        # 수정 : random seed 주석처리
-        #self.random_seed = random_seed
-        #random.seed(self.random_seed)
-        #np.random.seed(self.random_seed)
+        self.random_seed = random_seed
+        self.train_image_path = train_image_path
+        # random.seed(self.random_seed)
+        # np.random.seed(self.random_seed)
         # self.new_board = np.full((self.board_size, self.board_size, 3), 255).astype('uint8')
 
     def extract_img(self, image_name):
@@ -58,10 +59,8 @@ class merge_images:
                       block_size=[200, 250],  # min max
                       height=4, width=4, filter_horizon=True):
 
-        #------------------------------------------------------------------#
+        # ------------------------------------------------------------------#
         # 수정 : block_size min max로 범위 지정하여 랜덤하게 적용
-
-
 
         new_board = np.full((self.board_size, self.board_size, 3), 255).astype('uint8')
         coor_dict = {(0, 0): {'x': 500, 'y': self.board_size}}
@@ -81,17 +80,21 @@ class merge_images:
 
             for j in range(height):
 
+                if count >= stop_count:
+                    break
                 t_label = target_labels[count]
-                print(t_label)
+                count += 1  # 수정
 
                 # ------------------------------------------------------------------------------------#
                 # row_num 코드 수정
-                row_num = len(self.train_df[(self.train_df[t_label] == 1) & (self.train_df['label_sum'] == 1)].iloc[:, 0])
+                row_num = len(
+                    self.train_df[(self.train_df[t_label] == 1) & (self.train_df['label_sum'] == 1)].iloc[:, 0])
                 random_row_num = random.choice(np.arange(row_num))
                 image_name = self.train_df[(self.train_df[t_label] == 1) & (self.train_df['label_sum'] == 1)].iloc[
                     random_row_num, 0]
                 # label 추가
-                labels.append(self.train_df[(self.train_df[t_label] == 1) & (self.train_df['label_sum'] == 1)].iloc[random_row_num,
+                labels.append(self.train_df[(self.train_df[t_label] == 1) & (self.train_df['label_sum'] == 1)].iloc[
+                              random_row_num,
                               2:-1].tolist())
 
                 # ------------------------------------------------------------------------------------#
@@ -169,11 +172,6 @@ class merge_images:
 
                 if sw == 1:
                     break
-                count += 1 # 수정
-                if count>=stop_count: # 수정
-                    break
-
-
 
             target_new_board = new_board[:, row_min_x:row_max_x, :]
             temp_fill_list = []
@@ -202,7 +200,7 @@ class merge_images:
         up_y = np.max(y_coors)
         bbox = new_board[left_x:right_x, down_y:up_y, :]
 
-        #------------------------------------------------------------------#
+        # ------------------------------------------------------------------#
         # 수정 : block_size min max로 범위 지정하여 랜덤하게 적용
 
         if isinstance(block_size, list):
@@ -225,13 +223,8 @@ class merge_images:
         return back_ground, labels
 
 
-
-
-
 if __name__ == '__main__':
-    import os
-    import pandas as pd
-    from utils import random_label
+
     default_path = os.getcwd()
     data_path = os.path.join(default_path, 'data')
     train_image_path = os.path.join(data_path, 'train')
@@ -242,35 +235,35 @@ if __name__ == '__main__':
     sums = np.sum(train_df[labels], axis=1)
     train_df['label_sum'] = sums
 
-
     num_data = 5
     new_data_dir = "train_1"
     new_train_pd = pd.DataFrame(columns=['id', 'img_path', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'])
 
     for idx in range(num_data):
-
         target_labels = random_label(labels, sort=True)
-
         generate_obj = merge_images(train_df)
-        new_image, label_final = generate_obj.make_new_data(target_labels=target_labels, block_size=[210, 250])
-
+        new_image, label_final = generate_obj.make_new_data(target_labels=target_labels, block_size=[240, 300])
 
         new_img_id = "{}_{}".format(new_data_dir, idx)
         new_img_path = "./{}/{}.jpg".format(new_data_dir, new_img_id)
-        new_data = [new_img_id,new_img_path]
+        new_data = [new_img_id, new_img_path]
         new_data.extend(label_final)
 
         new_train_pd.loc[new_train_pd.shape[0]] = new_data
 
+        # save image
         new_image = cv2.cvtColor(new_image.astype("uint8"), cv2.COLOR_RGB2BGR)
-        cv2.imwrite(os.path.join(data_path, new_img_path),new_image)
-
-    new_train_pd.to_csv(os.path.join(data_path,"{}.csv".format(new_data_dir)), index = None)
-
-
-
+        cv2.imwrite(os.path.join(data_path, new_img_path), new_image)
+        print(idx)
+        print('save success')
 
     # save label csv
+    new_train_pd.to_csv(os.path.join(data_path, "{}.csv".format(new_data_dir)), index=None)
+
+
+
+
+
 
 
 

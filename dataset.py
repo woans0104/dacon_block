@@ -16,14 +16,16 @@ class CustomDataset(Dataset):
         self.data_dir = "/nas/home/jihyokim/jm/dacon_block/data"
 
     def __getitem__(self, index):
-        img_path = os.path.join(self.data_dir,self.img_path_list[index])
+
+        img_path = os.path.join(self.data_dir,self.img_path_list[index].split('./')[-1])
         image = cv2.imread(img_path)
 
         if self.transforms is not None:
             image = self.transforms(image=image)['image']
 
         if self.label_list is not None:
-            label = torch.FloatTensor(self.label_list[index])
+
+            label = torch.FloatTensor(self.label_list[index].astype('uint8'))
             return image, label
         else:
             return image

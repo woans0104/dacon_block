@@ -15,7 +15,7 @@ def copyStateDict(state_dict):
     return new_state_dict
 
 
-def random_label(labels, min_num = 4 , sort=False):
+def random_label(labels, min_num = 7 , sort=False):
     rand_num = np.random.randint(min_num, len(labels)+1)
     rand_label = np.random.choice(labels,rand_num, replace=False)
     if sort :

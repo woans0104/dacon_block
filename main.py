@@ -45,7 +45,7 @@ def seed_everything(seed):
 #     return df.iloc[:,2:].values
 
 def get_labels(df):
-    return df.iloc[:,2:-1].values
+    return df.iloc[:,2:].values
 
 
 # train / validation
@@ -127,6 +127,23 @@ def train(config, model, optimizer, train_loader, val_loader, scheduler, device)
             )
             torch.save(save_param_dic, save_param_path)
 
+
+
+    #last model save
+
+    save_param_dic = {
+        "epoch": epoch,
+        "model": model.state_dict(),
+        "optimizer": optimizer.state_dict(),
+    }
+    save_param_path = (
+            config.results_dir
+            + "/daconBlock_last"
+            + repr(epoch)
+            + ".pth"
+    )
+    torch.save(save_param_dic, save_param_path)
+
     return best_model
 
 
@@ -158,49 +175,63 @@ def validation(model, criterion, val_loader, device):
 
 
 
+
+def merge_dataFrame(data_dir, train_data_dir):
+
+    merge_df = pd.DataFrame(columns=['id', 'img_path', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'])
+    for data in train_data_dir:
+        df = pd.read_csv(os.path.join(data_dir, '{}.csv'.format(data)))
+        merge_df = pd.concat([merge_df, df], ignore_index=True)
+
+    return merge_df
+
+
 def main(config):
 
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
-
     seed_everything(config.train.seed) # Seed 고정
 
     # Data Load
     # Train / Validation Split
+
     df = pd.read_csv(config.data_dir.block_train)
+
+    # -----------------------------------------------------------------------------#
+    #df = merge_dataFrame(config.data_dir.block_data_dir, config.train.data_dir)
+    # -----------------------------------------------------------------------------#
     df = df.sample(frac=1)
 
-
     # train / val split
+    train_len = int(len(df) * 0.8)
+    train_data = df[:train_len]
+    val_data = df[train_len:]
 
-    # train_len = int(len(df) * 0.8)
-    # train_data = df[:train_len]
-    # val_data = df[train_len:]
+
 
     #-----------------------------------------------------------------------------#
-    val_idx =[]
-    #val_1 = df[df["SUM"] <= 3].sample(n=1000, random_state=config.train.seed).index.tolist()
-    val_2 = df[(df["SUM"] >= 4) & (df["SUM"] <=5)].sample(n=1000, random_state=config.train.seed).index.tolist()
-    val_3 = df[df["SUM"] >= 6].sample(n=1000, random_state=config.train.seed).index.tolist()
-
-    #val_idx.extend(val_1)
-    val_idx.extend(val_2)
-    val_idx.extend(val_3)
-    val_idx.sort()
-
-
-    val_data = df.loc[val_idx]
-    df.drop(val_data.index, inplace=True)
-    train_data = df
-
-    print("val_data")
-    print(val_idx[:10])
+    # val_idx =[]
+    # #val_1 = df[df["SUM"] <= 3].sample(n=1000, random_state=config.train.seed).index.tolist()
+    # val_2 = df[(df["SUM"] >= 4) & (df["SUM"] <=5)].sample(n=1000, random_state=config.train.seed).index.tolist()
+    # val_3 = df[df["SUM"] >= 6].sample(n=1000, random_state=config.train.seed).index.tolist()
+    #
+    # #val_idx.extend(val_1)
+    # val_idx.extend(val_2)
+    # val_idx.extend(val_3)
+    # val_idx.sort()
+    #
+    #
+    # val_data = df.loc[val_idx]
+    # df.drop(val_data.index, inplace=True)
+    # train_data = df
+    #
+    # print("val_data")
+    # print(val_idx[:10])
     # -----------------------------------------------------------------------------#
 
     # Data Preprocessing
 
     train_labels = get_labels(train_data)
     val_labels = get_labels(val_data)
-
 
 
     train_transform = A.Compose([
@@ -228,18 +259,16 @@ def main(config):
 
 
     #run
-
     model = BaseModel()
     if (device.type == 'cuda') and (torch.cuda.device_count() >1) :
         print("multi gpu activate")
         #model = nn.DataParallel(model, device_ids=list(range(torch.cuda.device_count()))).cuda()
         model = nn.DataParallel(model).cuda()
-    optimizer = torch.optim.Adam(params = model.parameters(), lr = config.train.lr)
+    optimizer = torch.optim.Adam(params = model.parameters(), lr = config.train.lr, weight_decay=config.train.weight_decay)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=2,
                                                            threshold_mode='abs',min_lr=1e-8, verbose=True)
 
-    infer_model = train(config, model, optimizer, train_loader, val_loader, scheduler, device)
-
+    train(config, model, optimizer, train_loader, val_loader, scheduler, device)
 
 
 
