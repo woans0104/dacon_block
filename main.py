@@ -157,7 +157,10 @@ def validation(model, criterion, val_loader, device):
     return _val_loss, _val_acc
 
 
-def make_class_generate_num(df, ratio=1, over_num=6):
+def make_class_generate_num(df, ratio=1, over_num=6, target_num=0):
+    """
+    target_num값 설정되면 ratio보다 우선됨
+    """
     sums = np.sum(df.iloc[:,2:],axis=1)
     class_values = sums.value_counts()
     max_num = np.max(class_values)
@@ -173,9 +176,15 @@ def make_class_generate_num(df, ratio=1, over_num=6):
             continue
             
         if num in index_set:
-            generate_value = max(0, stand_generate_num-sum_values[num])
+            if target_num>0:
+                generate_value = max(0, target_num-stand_generate_num)
+            else:
+                generate_value = max(0, stand_generate_num-sum_values[num])
         else:
-            generate_value = stand_generate_num
+            if target_num>0:
+                generate_value = target_num
+            else:
+                generate_value = stand_generate_num
     
         generate_list[i] = generate_value
 
@@ -186,18 +195,23 @@ def main(config):
     delete_merge_folder = config.generating.delete_merge_folder
     train_generate_num_list = config.generating.train_generate_num_list
     val_generate_num_list = config.generating.val_generate_num_list
-
+    
     save_merged_folder = config.generating.folder_name
-    train_one_sample_num = config.generating.train_one_sample_num
-    val_one_sample_num = config.generating.val_one_sample_num
-    all_one_sample_num = train_one_sample_num + val_one_sample_num
+
     
     same_class_generate_option = config.generating.same_class_generate.option
     same_class_generate_ratio = config.generating.same_class_generate.ratio
     same_class_generate_over_num = config.generating.same_class_generate.over_num
     
+    train_target_sample_num = config.generating.train_target_sample_num
+    val_target_sample_num = config.generating.val_target_sample_num
+    
+    
+    generate_sampling_ratio = config.generating.generate_sampling_ratio
+    generate_sampling_limit_num = config.generating.generate_sampling_limit_num
+    
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
-
+    
     seed_everything(config.train.seed) # Seed 고정
     
     labels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']
@@ -205,31 +219,80 @@ def main(config):
     # Train / Validation Split
     df = pd.read_csv(config.data_dir.block_train)
     merge_df = pd.DataFrame(columns=df.columns)
-    if delete_merge_folder:
+    merged_folder = f'./data/{save_merged_folder}'
+    
         # make merge data
 
-        temp_df = df.copy()
-        sums = np.sum(temp_df[labels], axis=1)
-        temp_df['label_sum'] = sums
+    temp_df = df.copy()
+    sums = np.sum(temp_df[labels], axis=1)
+    temp_df['label_sum'] = sums
+    
+    label_list = []
+    for _ in range(df.shape[0]):
+        label_list.append([])
+    for t_label in labels:
+        filter_list = df[t_label].tolist()
+        for i, value in enumerate(filter_list):
+            if value==1:
+                label_list[i].append(t_label)
+    
+    
+    temp_key_dict = {}
+    key_num = -1
+    unique_label_list = []
+    for i in range(len(label_list)):
+        key = tuple(label_list[i])
+        if key not in temp_key_dict.keys():
+            temp_key_dict[key] = ''
+            key_num += 1
+        unique_label_list.append(key_num)
+        
+        
+    temp_df['unique_label'] = unique_label_list
+    t_temp_df = temp_df[temp_df['label_sum']<=4]
+    
+    key_ind_dict = {}
+    temp_unique_label_list = t_temp_df['unique_label'].tolist()
+    temp_inds = t_temp_df.index.tolist()
+    for i in range(len(temp_unique_label_list)):
+        temp_unique_label = temp_unique_label_list[i]
+        temp_ind = temp_inds[i]
+        
+        if temp_unique_label not in key_ind_dict.keys():
+            key_ind_dict[temp_unique_label] = []
+        key_ind_dict[temp_unique_label].append(temp_ind)
+    
+    for_merge_train_inds = []
+    for_merge_val_inds = []
+    for key in key_ind_dict.keys():
+        inds = key_ind_dict[key]
+        length = len(inds)
+        if length<generate_sampling_limit_num:
+            continue
+        target_num = int(length*generate_sampling_ratio)
+        target_inds = random.sample(inds, target_num)
+        
+        half = int(len(target_inds)/2)
+        for_merge_train_inds+=target_inds[:half]
+        for_merge_val_inds+=target_inds[half:]
 
-        for_merge_inds = []
-        for label in labels:
-            inds = temp_df[(temp_df['label_sum']==1)&(temp_df[label]==1)].index.tolist()[:all_one_sample_num]
-            for_merge_inds += inds
+    for_merge_train_df = temp_df.loc[for_merge_train_inds,:]
+    for_merge_val_df = temp_df.loc[for_merge_val_inds,:]
+    df = df.drop(for_merge_train_inds, axis=0)
+    df = df.drop(for_merge_val_inds, axis=0)
 
-        for_merge_df = temp_df.loc[for_merge_inds,:]
-        df = df.drop(for_merge_inds, axis=0)
-
-        merged_folder = f'./data/{save_merged_folder}'
+    if delete_merge_folder:
         if os.path.isdir(merged_folder):
             shutil.rmtree(merged_folder)
 
         os.mkdir(merged_folder)
         
     else:
-        pass
+        if os.path.isdir(merged_folder):
+            raise ValueError('Existed forder. Please delete merge folder or change merge folder name')
 
     df = df.sample(frac=1)
+    df = df.reset_index(drop=True)
     train_len = int(len(df) * 0.8)
     train_data = df[:train_len]
     val_data = df[train_len:]
@@ -237,75 +300,123 @@ def main(config):
     if same_class_generate_option:
         train_generate_num_list = make_class_generate_num(train_data, 
                                                      ratio=same_class_generate_ratio, 
-                                                     over_num=same_class_generate_over_num)
+                                                     over_num=same_class_generate_over_num,
+                                                         target_num=train_target_sample_num)
         val_generate_num_list = make_class_generate_num(val_data, 
                                                      ratio=same_class_generate_ratio, 
-                                                     over_num=same_class_generate_over_num)
-    
-    
+                                                     over_num=same_class_generate_over_num,
+                                                       target_num=val_target_sample_num)
+
     train_generate_num = sum(train_generate_num_list)
     val_generate_num = sum(val_generate_num_list)
-    all_generate_num = train_generate_num + val_generate_num
-
-    ids = []
-    img_paths = []
-    temp_label_dict = {}
-    for t_label in labels:
-        temp_label_dict[t_label] = [0]*(all_generate_num)
-    generate_obj = merge_images(for_merge_df)
-        
     
+    train_ids = []
+    train_img_paths = []
+    train_temp_label_dict = {}
+    for t_label in labels:
+        train_temp_label_dict[t_label] = [0]*(train_generate_num)
+    temp_train_merge_df = pd.DataFrame()
+    train_generate_obj = merge_images(for_merge_train_df, image_path='./data/train')
+    val_generate_obj = merge_images(for_merge_val_df, image_path='./data/train')
+
     file_index = 0
     for t_k, t_generate_num in enumerate(train_generate_num_list):
         t_k=t_k+1
         for i in tqdm(range(t_generate_num)):
-            filename = f'MERGE_{file_index+1}'
-            img_path = f'{merged_folder}/{filename}.jpg'
+            filename = f'TRAIN_MERGE_{file_index+1}'
+            img_path = f'./{merged_folder}/{filename}.jpg'
             #k = np.random.randint(7,10)
 
 
             temp_labels = random.sample(labels, t_k)
 
             for temp_label in temp_labels:
-                temp_label_dict[temp_label][file_index] = 1
+                train_temp_label_dict[temp_label][file_index] = 1
 
-            merge_image = generate_obj.make_new_data(target_labels=temp_labels,
-                                                    random_indices=[k for k in range(train_one_sample_num)])
+            merge_image = train_generate_obj.make_new_data(target_labels=temp_labels)
 
             cv2.imwrite(img_path, merge_image)
-            ids.append(f'{filename}')
-            img_paths.append(f'{save_merged_folder}/{filename}.jpg')
+            train_ids.append(f'{filename}')
+            train_img_paths.append(f'{save_merged_folder}/{filename}.jpg')
             file_index += 1
     
+    val_ids = []
+    val_img_paths = []
+    val_temp_label_dict = {}
+    temp_val_merge_df = pd.DataFrame()
+    for t_label in labels:
+        val_temp_label_dict[t_label] = [0]*(val_generate_num)
+    file_index = 0
     for t_k, t_generate_num in enumerate(val_generate_num_list):
         t_k=t_k+1
         for i in tqdm(range(t_generate_num)):
-            filename = f'MERGE_{file_index+1}'
-            img_path = f'{merged_folder}/{filename}.jpg'
+            filename = f'VAL_MERGE_{file_index+1}'
+            img_path = f'./{merged_folder}/{filename}.jpg'
 
             temp_labels = random.sample(labels, t_k)
             for temp_label in temp_labels:
-                temp_label_dict[temp_label][file_index] = 1
-            merge_image = generate_obj.make_new_data(target_labels=temp_labels,
-                                                    random_indices=[k for k in range(train_one_sample_num, all_one_sample_num)])
+                val_temp_label_dict[temp_label][file_index] = 1
+            merge_image = val_generate_obj.make_new_data(target_labels=temp_labels)
             cv2.imwrite(img_path, merge_image)
-            ids.append(f'{filename}')
-            img_paths.append(f'{save_merged_folder}/{filename}.jpg')
+            val_ids.append(f'{filename}')
+            val_img_paths.append(f'{save_merged_folder}/{filename}.jpg')
             file_index += 1
-
-    merge_df['id'] = ids
-    merge_df['img_path'] = img_paths
-    for t_label in labels:
-        merge_df[t_label] = temp_label_dict[t_label]
-
-    merge_df.index = [i for i in range(len(df), len(df)+(all_generate_num))]
     
-    train_data = pd.concat([train_data, merge_df.iloc[:train_generate_num]], axis=0)
-    val_data = pd.concat([val_data, merge_df.iloc[train_generate_num:all_generate_num]], axis=0)
+    
+    
+    temp_train_merge_df['id'] = train_ids
+    temp_train_merge_df['img_path'] = train_img_paths
+    
+    for t_label in labels:
+        temp_train_merge_df[t_label] = train_temp_label_dict[t_label]
+
+    
+    
+    temp_val_merge_df['id'] = val_ids
+    temp_val_merge_df['img_path'] = val_img_paths
+    
+    for t_label in labels:
+        temp_val_merge_df[t_label] = val_temp_label_dict[t_label]
+
+    
+    train_data = pd.concat([train_data, temp_train_merge_df], axis=0).reset_index(drop=True)
+    val_data = pd.concat([val_data, temp_val_merge_df], axis=0).reset_index(drop=True)
+    
+    if train_target_sample_num:
+        target_inds = []
+        temp_df = train_data.copy()
+        sums = np.sum(temp_df.iloc[:,2:],axis=1)
+        temp_df['sums'] = sums
+        for i in range(len(labels)):
+            
+            t_temp_df = temp_df[temp_df['sums']==i+1]
+            target_ind = t_temp_df.index.tolist()
+            if len(target_ind)>train_target_sample_num:
+                target_ind = random.sample(target_ind, train_target_sample_num)
+
+            target_inds += target_ind
+    
+    train_data = train_data.loc[target_inds,:]
+    if val_target_sample_num:
+        target_inds = []
+        temp_df = val_data.copy()
+        sums = np.sum(temp_df.iloc[:,2:],axis=1)
+        temp_df['sums'] = sums
+        for i in range(len(labels)):
+            t_temp_df = temp_df[temp_df['sums']==i+1]
+            target_ind = t_temp_df.index.tolist()
+            if len(target_ind)>=train_target_sample_num:
+                target_ind = random.sample(target_ind, train_target_sample_num)
+
+            target_inds+= target_ind
+            
+    val_data = val_data.loc[target_inds,:]
+
+
     
     train_data.to_csv(f'{config.results_dir}/train_data.csv', index=False)
     val_data.to_csv(f'{config.results_dir}/val_data.csv', index=False)
-
+    
     # Data Preprocessing
 
     train_labels = get_labels(train_data)
@@ -335,9 +446,7 @@ def main(config):
     val_loader = DataLoader(val_dataset, batch_size = config.train.batch_size, shuffle=False, num_workers=0)
 
 
-
     #run
-
     model = BaseModel()
     if (device.type == 'cuda') and (torch.cuda.device_count() >1) :
         print("multi gpu activate")

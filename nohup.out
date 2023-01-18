@@ -1,0 +1,14 @@
+[I 2023-01-18 07:35:42.226 LabApp] JupyterLab extension loaded from /home/molra/anaconda3/envs/podiblock/lib/python3.7/site-packages/jupyterlab
+[I 2023-01-18 07:35:42.226 LabApp] JupyterLab application directory is /home/molra/anaconda3/envs/podiblock/share/jupyter/lab
+[I 07:35:42.229 NotebookApp] Serving notebooks from local directory: /home/molra/workspace/podiblock/dacon_block
+[I 07:35:42.229 NotebookApp] Jupyter Notebook 6.5.2 is running at:
+[I 07:35:42.229 NotebookApp] http://localhost:8888/?token=ef25087fe33a5a255ac8a900fb80bd7b479d06721e8bf7ea
+[I 07:35:42.229 NotebookApp]  or http://127.0.0.1:8888/?token=ef25087fe33a5a255ac8a900fb80bd7b479d06721e8bf7ea
+[I 07:35:42.229 NotebookApp] Use Control-C to stop this server and shut down all kernels (twice to skip confirmation).
+[C 07:35:42.249 NotebookApp] 
+    
+    To access the notebook, open this file in a browser:
+        file:///home/molra/.local/share/jupyter/runtime/nbserver-11666-open.html
+    Or copy and paste one of these URLs:
+        http://localhost:8888/?token=ef25087fe33a5a255ac8a900fb80bd7b479d06721e8bf7ea
+     or http://127.0.0.1:8888/?token=ef25087fe33a5a255ac8a900fb80bd7b479d06721e8bf7ea

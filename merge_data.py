@@ -7,225 +7,252 @@ import random
 
 class merge_images:
     
-    def __init__(self, train_df, board_size=2000, random_seed=42, train_image_path='./data/train'):
-        self.train_df = train_df
+    def __init__(self, df, id_col='id', image_path=None, material_max_blocks=4,
+                seed=42, limit_patience = 100, board_size = 2000, x_move_ratio = 0.95,
+                 y_move_ratio = 0.1, default_image_size=400):
+                
+                
+        self.seed = seed
+        self.limit_patience = limit_patience
         self.board_size = board_size
-        self.random_seed = random_seed
-        self.train_image_path = train_image_path
-        random.seed(self.random_seed)
-        np.random.seed(self.random_seed)
-        #self.new_board = np.full((self.board_size, self.board_size, 3), 255).astype('uint8')
+        self.x_move_ratio = x_move_ratio
+        self.y_move_ratio = y_move_ratio
+        self.default_image_size = default_image_size
+
     
-    
-    def extract_img(self, image_name):
+        self.true_labels = ['A','B','C','D','E','F','G','H','I','J']
+        self.cand_dict = {1:([1]), 2:([2],[1,1]), 3:([3],[1,2],[1,1,1]), 4:([4],[1,3],[2,2],[1,1,2]),
+                    5:([4,1],[3,2],[1,1,3],[1,2,2]), 6:([4,2],[3,3],[1,1,4],[1,2,3],[2,2,2]), 
+                     7:([4,3],[1,2,4],[2,2,3]), 8:([4,4],[3,3,2],[4,2,2],[4,3,1]),
+                    9:([4,4,1],[4,3,2]), 10:([4,4,2],[3,4,3])}
+
+
+        filter_df = df[df['label_sum']<=material_max_blocks][[id_col,'label_sum']+self.true_labels]
+        id_list = filter_df[id_col].tolist()
+        sum_list = filter_df['label_sum'].tolist()
+
+        label_list = []
+        for _ in range(filter_df.shape[0]):
+            label_list.append([])
+
+        for t_label in self.true_labels:
+            filter_list = filter_df[t_label].tolist()
+            for i, value in enumerate(filter_list):
+                if value==1:
+                    label_list[i].append(t_label)
+
+        for i in range(len(label_list)):
+            label_list[i] = tuple(label_list[i])
         
-        #image_name = 'TRAIN_00000'
-        img_example = cv2.imread(image_name)
-        img_bg = np.full((400, 400, 3), 0).astype('uint8')
-
-        # Background - Gray
-        img_example = cv2.cvtColor(img_example, cv2.COLOR_BGR2RGB)
-        img_bg_gray=cv2.cvtColor(img_bg, cv2.COLOR_BGR2GRAY)
-        img_gray=cv2.cvtColor(img_example, cv2.COLOR_BGR2GRAY)
-        diff_gray=cv2.absdiff(img_bg_gray,img_gray)
-        diff_gray_blur = cv2.GaussianBlur(diff_gray,(5,5),0)
-        diff_gray_blur = cv2.medianBlur(diff_gray_blur, 5)
-
-        ret, mask = cv2.threshold(diff_gray_blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-        #previewImg("Otsu Treshold",mask,True)
-        new_img = np.full((400, 400, 3), 255).astype('uint8')
-
-        new_img[np.where(mask==0)] = img_example[np.where(mask==0)]
-
-        return new_img, mask
-    
-    
-    def extract_xy(self, mask):
-        ys, xs = np.where(mask==0)
-        left_x, right_x = np.min(xs), np.max(xs)
-        down_y, up_y = np.min(ys), np.max(ys)
-        median_x = np.round(np.median(np.unique(xs))).astype(int)
-        median_y = np.round(np.median(np.unique(ys))).astype(int)
-
-        x_coors = [left_x, right_x, median_x]
-        y_coors = [down_y, up_y, median_y] 
-
-        return x_coors, y_coors
-
-
-    def make_new_data(self, random_indices=[0,1,2,3,4,5,6,7,8,9],
-                     target_labels=['A','B','C','D','E','F','G','H','I','J'],
-                      block_size=[240,250,260,270,280,290,300,310,320],
-                     height=4, width=4, filter_horizon=True):
+        if image_path:
+            obj = [(f'{image_path}/{id_}.jpg', sum_num, t_labels) for id_, sum_num, t_labels in zip(id_list, sum_list, label_list)]
+        else:
+            obj = [(f'{id_}', sum_num, t_labels) for id_, sum_num, t_labels in zip(id_list, sum_list, label_list)]
         
-        new_board = np.full((self.board_size, self.board_size, 3), 255).astype('uint8')
-        coor_dict = {(0,0):{'x':500, 'y':self.board_size}}
-        count = 0
-        stop_count = len(target_labels)
-        cur_direct = 'up'
-        right_max_x = 0
-        past_i = 0
         
-        for i in range(width):
-            sw = 0
-            row_min_x = self.board_size
-            row_max_x = 0
-            row_min_y = self.board_size
-            row_max_y = 0
-            
-            for j in range(height):
-                
-                if count>=stop_count:
-                    break
-                t_label = target_labels[count]
-                count += 1
-                
-                if isinstance(random_indices, list):
-                    random_row_num = random.choice(random_indices)
-                elif isinstance(random_indices, int):
-                    random_row_num = random_indices
-                image_name = self.train_df[(self.train_df[t_label]==1)&(self.train_df['label_sum']==1)].iloc[random_row_num,0]
-                new_img, mask = self.extract_img(self.train_image_path+f'/{image_name}.jpg')
-                x_coors, y_coors = self.extract_xy(mask)
-                
-                start_x = coor_dict[(i,j)]['x']
-                start_y = coor_dict[(i,j)]['y']
-                
-                ok_y_inds, ok_x_inds = np.where(mask==0)
-                t_x_list = []
-                t_y_list = []
-                
-                min_x = x_coors[0]
-                min_y = y_coors[0]
-                max_y = y_coors[1]
-                
-                median_x_value = int(np.round(np.median(np.unique(ok_x_inds))))
+        self.pool_dict = {}
+        for path, sum_num, t_labels in obj:
+            if sum_num not in self.pool_dict.keys():
+                self.pool_dict[sum_num] = {}
 
-                for k in range(len(ok_x_inds)):
-                    t_x = ok_x_inds[k]
-                    t_y = ok_y_inds[k]
+            if t_labels not in self.pool_dict[sum_num].keys():
+                self.pool_dict[sum_num][t_labels] = []
+            self.pool_dict[sum_num][t_labels].append(path)
 
-                    new_x = start_x + t_x - min_x
-                    if cur_direct=='up':
-                        new_x = new_x - (median_x_value-min_x)
-                    new_y = t_y + (start_y - max_y) -1
+        random.seed(self.seed)
+        np.random.seed(self.seed)
 
-                    t_x_list.append(new_x)
-                    t_y_list.append(new_y)
-                t_x_list = np.array(t_x_list)
-                t_y_list = np.array(t_y_list)
 
-                right_max_x = max([right_max_x, np.max(t_x_list)])
-                new_board[(t_y_list, t_x_list)] = new_img[np.where(mask==0)]
-                
-                
-                # next method
-                if j==2:
-                    p = np.random.uniform()
-                    if p<=.5:
-                        cur_direct='right'
-                        sw = 1
-                elif j==3:
-                    cur_direct='right'
+    def make_new_data(self, take_num=0,
+                   block_size=[240,250,260,270,280,290,300,310,320],
+                   target_labels=None):
+        
+        if target_labels:
+            take_num = len(target_labels)
+            rest_label_set = set(random.sample(target_labels, take_num))
+        
+        else:
+
+            # set global params
+            rest_label_set = set(random.sample(self.true_labels, take_num))
+        
+        # extract block stack candidates
+        rest_cands = random.choice(self.cand_dict[take_num])
+
+        all_xy_coors = []
+        past_left = 500
+        past_right = 0
+        past_median = 0
+        #count = 0
+        for right_left_ind, choice_num in enumerate(rest_cands):
+            if right_left_ind>0:
+                past_x_diff = past_right-past_left
+                past_x_move = int(past_x_diff*self.x_move_ratio)
+                past_left = past_left + past_x_move
+                past_right = past_right + past_x_move
+                past_median = past_left + int((past_right-past_left)/2)
+
+            rest_num = choice_num
+            except_num_set = set()
+            patience = 0
+            past_top, past_down, past_y_pos = 2000, 2000, 2000
+
+            top_down_ind = 0
+            patience = 0
+            while rest_num!=0:
+
+                block_num = random.choice([i for i in range(1, rest_num+1) if i not in except_num_set])
+                block_labels = tuple(random.sample(rest_label_set, block_num))
+                if block_labels not in self.pool_dict[block_num].keys():
+                    if block_num==1:
+                        continue
+                    patience += 1
+                    continue
+                if patience==self.limit_patience:
+                    patience = 0
+                    except_num_set.add(block_num)
+                    continue
+
+                fig_name = random.choice(self.pool_dict[block_num][block_labels])
+
+
+                new_img, mask = extract_img(fig_name)
+
+                y_list, x_list = np.where(mask<255)
+                cur_top = np.min(y_list)
+                cur_down = np.max(y_list)
+
+                cur_right = np.max(x_list)
+                cur_left = np.min(x_list)
+                #cur_median = int((cur_right-cur_left)/2)
+                cur_median = extract_ten_percent(y_list, x_list, 'down')
+
+                if top_down_ind==0:
+                    x_move = past_left - cur_left 
                 else:
-                    cur_direct='up'
+                    x_move = past_median - cur_median
 
-                if i!=0 and j!=0:
-                    if cur_direct=='up':
-                        start_y += random_y_value
-                    elif cur_direct=='right':
-                        start_x += random_x_value+right_max_x
+                y_move = past_y_pos - cur_down - 1
 
-                random_y_value = random.choice([50])
-                random_x_value = random.choice([0])        
+                new_x_list = x_list + x_move
+                new_y_list = y_list + y_move
 
-                if cur_direct=='up':
-                    next_x = int(np.round(np.median(np.unique(t_x_list))))
-                    next_y = np.min(t_y_list)+random_y_value
-                elif cur_direct=='right':
-                    next_x = np.max(t_x_list)+random_x_value
-                    #next_x = right_max_x+random_x_value
-                    next_y = self.board_size
+                for i in range(len(new_x_list)):
+                    new_x = new_x_list[i]
+                    new_y = new_y_list[i]
+
+                    old_x = x_list[i]
+                    old_y = y_list[i]
+                    block_value = new_img[old_y,old_x,:]
+                    all_xy_coors.append((new_y,new_x,block_value))
 
 
-                row_min_x = np.min([row_min_x, np.min(t_x_list)])
-                row_max_x = np.max([row_min_x, np.max(t_x_list)])
-                row_min_y = np.min([row_min_y, np.min(t_y_list)])
-                row_max_y = np.max([row_max_y, np.max(t_y_list)])
+                # reposition
+                next_left = np.min(new_x_list)
+                next_right = np.max(new_x_list)
+                next_top = np.min(new_y_list)
+                next_down = np.max(new_y_list)
 
-                if j<3 and cur_direct=='up':
-                    coor_dict[(i,j+1)] = {'x':next_x, 'y':next_y}
-                else:
-                    coor_dict[(i+1,0)] = {'x':next_x, 'y':next_y}
 
-                if sw==1:
-                    break  
-            
-            target_new_board = new_board[:, row_min_x:row_max_x,:]
-            temp_fill_list = []
-            for check_num in range(target_new_board.shape[0]):
-                unique_num = np.unique(new_board[check_num, row_min_x:row_max_x])
-                if len(unique_num)==1:
-                    if unique_num[0]==255:
-                        temp_fill_list.append(check_num)
-            
-            if temp_fill_list:
-                temp_fill_list = np.array(temp_fill_list)
+                if next_right>past_right:
+                    past_left = next_left
+                    past_right = next_right
 
-                #target_new_board = target_new_board[~temp_fill_list,:]
-                target_new_board = np.delete(target_new_board, temp_fill_list, axis=0)
-                padding = np.full((len(temp_fill_list), target_new_board.shape[1], 3), 255).astype('uint8')
-                new_board[:, row_min_x:row_max_x,:] = np.r_[padding, target_new_board]
-            """
-            if filter_horizon:
-                temp_fill_list = []
-                fill_list = []
-                fill_sw = 0
-                for check_num in range(row_min_y, row_max_y):
+                past_median = extract_ten_percent(new_y_list, new_x_list, 'up')
 
-                    unique_num = np.unique(new_board[check_num, row_min_x:row_max_x])
-                    if unique_num[0]==255 and len(unique_num)==1:
-                        temp_fill_list.append(check_num)
-                        fill_sw = 1
-                    else:
-                        if fill_sw==1 and fill_list:
-                            fill_list.append(temp_fill_list)
-                            temp_fill_list = []
-                            fill_sw = 0
+                past_y_pos = next_top+int((next_down-next_top)*self.y_move_ratio)
 
-                if temp_fill_list:
-                    fill_list.append(temp_fill_list)
-                for temp_fill_list in fill_list:
-                    cv2.resize
-                    fill_ind = temp_fill_list[-1]
+                rest_num -= block_num
 
-                    fill_target = new_board[:fill_ind, row_min_x:row_max_x]
-                    pull_target = new_board[:temp_fill_list[0], row_min_x:row_max_x]
-                    fill_len = len(fill_target)
-                    pull_len = len(pull_target)
-                    padding = np.full((fill_len-pull_len, pull_target.shape[1], 3), 255).astype('uint8')
+                for t_label in block_labels:
+                    rest_label_set.remove(t_label)
 
-                    new_board[:fill_ind, row_min_x:row_max_x] = np.r_[padding, pull_target]
-            """
-            if count==stop_count:
-                break
-            
+                top_down_ind += 1
+
+        new_board = np.full((self.board_size,self.board_size,3),255)
+        for i,(y,x,z) in enumerate(all_xy_coors):
+            new_board[y,x,:] = z
+
         # resize
         x_coors, y_coors, _ = np.where(new_board!=255)
         left_x = np.min(x_coors)
         right_x = np.max(x_coors)
         down_y = np.min(y_coors)
-        up_y = np.max(y_coors)
-        bbox = new_board[left_x:right_x, down_y:up_y, :]
-        
+        top_y = np.max(y_coors)
+        bbox = new_board[left_x:right_x, down_y:top_y, :].astype('float32')
+
         if isinstance(block_size, list):
             size = np.random.choice(block_size)
         else:
             size = block_size
         bbox = cv2.resize(bbox, (size,size))
 
-        back_ground = np.full((400,400,3), 255)
-        margin = int((400-size)/2)
-        back_ground[margin:400-margin, margin:400-margin,:] = bbox
+        back_ground = np.full((self.default_image_size,self.default_image_size,3), 255)
+        margin = int((self.default_image_size-size)/2)
+        back_ground[margin:self.default_image_size-margin, margin:self.default_image_size-margin,:] = bbox
         
         return back_ground
+    
+    
+    
+    
+def extract_img(image_name, edge=10):
+
+    #image_name = 'TRAIN_00000'
+    img_example = cv2.imread(image_name)
+    img_bg = np.full((400, 400, 3), 0).astype('uint8')
+
+    # 
+    img_example = cv2.cvtColor(img_example, cv2.COLOR_BGR2RGB)
+    img_bg_gray=cv2.cvtColor(img_bg, cv2.COLOR_BGR2GRAY)
+    img_gray=cv2.cvtColor(img_example, cv2.COLOR_BGR2GRAY)
+    diff_gray=cv2.absdiff(img_bg_gray,img_gray)
+    diff_gray_blur = cv2.GaussianBlur(diff_gray,(5,5),0)
+    diff_gray_blur = cv2.medianBlur(diff_gray_blur, 5)
+    
+    ret, mask = cv2.threshold(diff_gray_blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+    
+    # edge 처리 : 블럭을 딸 때 edge 부근 일부도 블럭으로 인식되어 이를 제거함
+    mask[:,:edge] = 255
+    mask[:,-edge:] = 255
+    mask[:edge,:] = 255
+    mask[-edge:,:] = 255
+
+    new_img = np.full((400, 400, 3), 255).astype('uint8')
+
+    new_img[np.where(mask==0)] = img_example[np.where(mask==0)]
+
+    return new_img, mask
+    
+    
+def extract_ten_percent(y_list, x_list, size=400, direct='down', percent=.1):
+    
+    down = np.max(y_list)
+    up = np.min(y_list)
+    left = np.min(x_list)
+    right = np.max(x_list)
+    
+    y_diff = down-up
+    y_ten_percent = int(y_diff*percent)
+
+    if direct=='down':
+        down = up + y_ten_percent
+    else:
+        up = down - y_ten_percent
+    
+    x_result = []
+    for i in range(len(x_list)):
+        x = x_list[i]
+        y = y_list[i]
+        if y<=down and y>=up:
+            x_result.append(x)
+
+    x_median = np.min(x_result) + int((np.max(x_result)-np.min(x_result))/2)
+
+    return x_median
+    
+    
+    
+def stop_code(count, limit=3):
+    if count==limit:
+        raise ValueError('stop by user.')
