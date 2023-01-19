@@ -7,7 +7,7 @@ import random
 
 class merge_images:
     
-    def __init__(self, df, id_col='id', image_path=None, material_max_blocks=4,
+    def __init__(self, df, id_col='id', image_path=None, material_max_blocks=3,
                 seed=42, limit_patience = 100, board_size = 2000, x_move_ratio = 0.95,
                  y_move_ratio = 0.1, default_image_size=400):
                 
@@ -25,9 +25,17 @@ class merge_images:
                     5:([4,1],[3,2],[1,1,3],[1,2,2]), 6:([4,2],[3,3],[1,1,4],[1,2,3],[2,2,2]), 
                      7:([4,3],[1,2,4],[2,2,3]), 8:([4,4],[3,3,2],[4,2,2],[4,3,1]),
                     9:([4,4,1],[4,3,2]), 10:([4,4,2],[3,4,3])}
+        
+        
+        if 'label_sum' in df.columns: 
+            filter_df = df[df['label_sum']<=material_max_blocks]
+        
+        else:
+            df['label_sum'] = np.sum(df.loc[:,self.true_labels], axis=1)
+            filter_df = df[df['label_sum']<=material_max_blocks]
+            
+        filter_df = filter_df[filter_df['label_sum']<=material_max_blocks][[id_col,'label_sum']+self.true_labels]
 
-
-        filter_df = df[df['label_sum']<=material_max_blocks][[id_col,'label_sum']+self.true_labels]
         id_list = filter_df[id_col].tolist()
         sum_list = filter_df['label_sum'].tolist()
 
@@ -100,8 +108,10 @@ class merge_images:
             top_down_ind = 0
             patience = 0
             while rest_num!=0:
-
-                block_num = random.choice([i for i in range(1, rest_num+1) if i not in except_num_set])
+                if rest_num==1:
+                    block_num=1
+                else:
+                    block_num = random.choice([i for i in range(1, rest_num) if i not in except_num_set])
                 block_labels = tuple(random.sample(rest_label_set, block_num))
                 if block_labels not in self.pool_dict[block_num].keys():
                     if block_num==1:
@@ -114,7 +124,6 @@ class merge_images:
                     continue
 
                 fig_name = random.choice(self.pool_dict[block_num][block_labels])
-
 
                 new_img, mask = extract_img(fig_name)
 

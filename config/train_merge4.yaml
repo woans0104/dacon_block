@@ -16,16 +16,16 @@ train:
 
 
 generating:
-  delete_merge_folder: True
-  train_generate_num_list: [0,0,0,0,3000,3000,3000,3000,3000,3000]
-  val_generate_num_list: [0,0,0,0,2000,2000,2000,2000,2000,2000]
+  delete_merge_folder: False
+  train_generate_num_list: [0,0,0,0,5000,5000,5000,5000,5000,5000]
+  val_generate_num_list: [0,0,0,0,3000,3000,3000,3000,3000,3000]
   folder_name: merged4
   
   generate_sampling_ratio: 0.5
   generate_sampling_limit_num: 10
 
-  train_target_sample_num: 3000
-  val_target_sample_num: 2000
+  train_target_sample_num: 5000
+  val_target_sample_num: 3000
   same_class_generate: 
     option: True
     ratio: 1
