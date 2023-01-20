@@ -197,7 +197,8 @@ def make_class_generate_num(df, ratio=1, over_num=6, target_num=0):
     return generate_list
 
 
-def overlay_data(generate_num_list, merge_data_obj, labels, save_folder, type_='VAL'):
+def overlay_data(generate_num_list, merge_data_obj, labels, save_folder, 
+                 auto_block_size=True, type_='VAL'):
     ids = []
     img_paths = []
     label_dict = {}
@@ -208,18 +209,20 @@ def overlay_data(generate_num_list, merge_data_obj, labels, save_folder, type_='
     
     if not os.path.isdir(f'./data/{save_folder}'):
         os.mkdir(f'./data/{save_folder}')
-
+    
     file_index = 0
     for t_k, t_generate_num in enumerate(generate_num_list):
         t_k=t_k+1
         for i in tqdm(range(t_generate_num)):
             filename = f'{type_}_MERGE_{file_index+1}'
             img_path = f'./data/{save_folder}/{filename}.jpg'
-
+            
             temp_labels = random.sample(labels, t_k)
+
             for temp_label in temp_labels:
                 label_dict[temp_label][file_index] = 1
-            merge_image = merge_data_obj.make_new_data(target_labels=temp_labels)
+            merge_image = merge_data_obj.make_new_data(target_labels=temp_labels,
+                                                      auto_block_size=auto_block_size)
 
             cv2.imwrite(img_path, merge_image)
             ids.append(f'{filename}')
@@ -250,6 +253,7 @@ def main(config):
     val_target_sample_num = config.generating.val_target_sample_num
     all_target_sample_num = train_target_sample_num + val_target_sample_num
     
+    auto_block_size = config.generating.auto_block_size
     val_ratio = config.data.val_ratio
     
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
@@ -291,7 +295,7 @@ def main(config):
     
     train_df = df.loc[train_inds, :].reset_index(drop=True)
     val_df = df.loc[val_inds, :].reset_index(drop=True)
-
+    
     # generate_list
     train_generate_num_list = []
     val_generate_num_list = []
@@ -308,12 +312,14 @@ def main(config):
     
     train_merge_obj = merge_images(train_df, image_path='./data/train')
     train_merged_df = overlay_data(train_generate_num_list, train_merge_obj, 
-                                     labels, save_merged_folder, type_='TRAIN')
+                                     labels, save_merged_folder, 
+                                   auto_block_size=auto_block_size, type_='TRAIN')
     
     
     val_merge_obj = merge_images(val_df, image_path='./data/train')
     val_merged_df = overlay_data(val_generate_num_list, val_merge_obj, 
-                                     labels, save_merged_folder, type_='VAL')
+                                     labels, save_merged_folder, 
+                                 auto_block_size=auto_block_size, type_='VAL')
     
     # filtering rows
     train_inds = []
@@ -338,8 +344,6 @@ def main(config):
     target_cols = train_merged_df.columns.tolist()
     train_data = pd.concat([train_df.loc[:,target_cols], train_merged_df], axis=0).reset_index(drop=True)
     val_data = pd.concat([val_df.loc[:,target_cols], val_merged_df], axis=0).reset_index(drop=True)
-    ## 
-    
 
     train_data.to_csv(f'{config.results_dir}/train_data.csv', index=False)
     val_data.to_csv(f'{config.results_dir}/val_data.csv', index=False)

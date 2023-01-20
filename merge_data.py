@@ -3,7 +3,7 @@ import numpy as np
 import os
 import cv2
 import random
-
+    
 
 class merge_images:
     
@@ -67,12 +67,12 @@ class merge_images:
                 self.pool_dict[sum_num][t_labels] = []
             self.pool_dict[sum_num][t_labels].append(path)
 
-        random.seed(self.seed)
-        np.random.seed(self.seed)
 
-
+    
     def make_new_data(self, take_num=0,
-                   block_size=[240,250,260,270,280,290,300,310,320],
+                      w_block_size=[240,250,260,270,280],
+                   h_block_size=[240,250,260,270,280],
+                      auto_block_size=True,
                    target_labels=None):
         
         if target_labels:
@@ -86,12 +86,13 @@ class merge_images:
         
         # extract block stack candidates
         rest_cands = random.choice(self.cand_dict[take_num])
-
+        
         all_xy_coors = []
         past_left = 500
         past_right = 0
         past_median = 0
         #count = 0
+
         for right_left_ind, choice_num in enumerate(rest_cands):
             if right_left_ind>0:
                 past_x_diff = past_right-past_left
@@ -107,6 +108,7 @@ class merge_images:
 
             top_down_ind = 0
             patience = 0
+            
             while rest_num!=0:
                 if rest_num==1:
                     block_num=1
@@ -190,26 +192,88 @@ class merge_images:
         top_y = np.max(y_coors)
         bbox = new_board[left_x:right_x, down_y:top_y, :].astype('float32')
 
-        if isinstance(block_size, list):
-            size = np.random.choice(block_size)
-        else:
-            size = block_size
-        bbox = cv2.resize(bbox, (size,size))
-
-        back_ground = np.full((self.default_image_size,self.default_image_size,3), 255)
-        margin = int((self.default_image_size-size)/2)
-        back_ground[margin:self.default_image_size-margin, margin:self.default_image_size-margin,:] = bbox
+        w_auto_block_sw = 0
+        h_auto_block_sw = 0
         
+        selected_w_size = 0
+        selected_h_size = 0
+        if auto_block_size:
+            w_bbox = bbox.shape[0]
+            h_bbox = bbox.shape[1]
+            
+            if w_bbox>=self.default_image_size*0.7:
+                w_auto_block_sw = 1
+            if h_bbox>=self.default_image_size*0.7:
+                h_auto_block_sw = 1
+        
+        w_size = w_bbox
+        h_size = h_bbox
+        
+        if not auto_block_size or w_auto_block_sw==1:
+            if isinstance(w_block_size, list):
+                selected_w_size = np.random.choice(w_block_size)
+            else:
+                selected_w_size = w_block_size
+
+
+        if not auto_block_size or h_auto_block_sw==1:
+            if isinstance(h_block_size, list):
+                selected_h_size = np.random.choice(h_block_size)
+            else:
+                selected_h_size = h_block_size
+
+            
+        w_diff_ratio = 1
+        h_diff_ratio = 1
+        if selected_w_size:
+            w_diff_ratio = w_diff_ratio-(((selected_w_size-w_size)/w_size)*-1)
+        if selected_h_size:
+            h_diff_ratio = h_diff_ratio-(((selected_h_size-h_size)/h_size)*-1)
+        
+        if selected_w_size or selected_h_size:
+            stand_ratio = min([w_diff_ratio, h_diff_ratio])
+            w_size = int(w_size*stand_ratio)
+            h_size = int(h_size*stand_ratio)
+
+        bbox = cv2.resize(bbox, (h_size, w_size))
+        
+        h_default_size = self.default_image_size
+        w_default_size = self.default_image_size
+        
+        back_ground = np.full((h_default_size, w_default_size,3), 255)
+        w_margin = int((w_default_size-w_size)/2)
+        h_margin = int((h_default_size-h_size)/2)
+
+        # check num
+        # h_size
+        h_diff = 10000
+        while h_diff!=h_size:
+            h_diff = h_default_size-2*h_margin
+            if h_diff>h_size:
+                h_default_size-=1
+            elif h_diff<h_size:
+                h_default_size+=1
+
+        w_diff = 10000
+        while w_diff!=w_size:
+            w_diff = w_default_size-2*w_margin
+            if w_diff>w_size:
+                w_default_size-=1
+            elif w_diff<w_size:
+                w_default_size+=1
+
+        back_ground[w_margin:w_default_size-w_margin, h_margin:h_default_size-h_margin,:] = bbox
+
         return back_ground
     
     
     
     
-def extract_img(image_name, edge=10):
+def extract_img(image_name, edge=10, default_image_size=400):
 
     #image_name = 'TRAIN_00000'
     img_example = cv2.imread(image_name)
-    img_bg = np.full((400, 400, 3), 0).astype('uint8')
+    img_bg = np.full((default_image_size, default_image_size, 3), 0).astype('uint8')
 
     # 
     img_example = cv2.cvtColor(img_example, cv2.COLOR_BGR2RGB)
@@ -227,7 +291,7 @@ def extract_img(image_name, edge=10):
     mask[:edge,:] = 255
     mask[-edge:,:] = 255
 
-    new_img = np.full((400, 400, 3), 255).astype('uint8')
+    new_img = np.full((default_image_size, default_image_size, 3), 255).astype('uint8')
 
     new_img[np.where(mask==0)] = img_example[np.where(mask==0)]
 
