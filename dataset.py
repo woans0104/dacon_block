@@ -9,7 +9,7 @@ from torch.utils.data import Dataset, DataLoader
 # CustomDataset
 
 class CustomDataset(Dataset):
-    def __init__(self, img_path_list, label_list, transforms=None):
+    def __init__(self, img_path_list, label_list, data_dir='./data', transforms=None):
         self.img_path_list = img_path_list
         self.label_list = label_list
         self.transforms = transforms

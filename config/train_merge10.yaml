@@ -17,7 +17,10 @@ train:
     img_size: 224
   using_existed_merged_exp: False # or False
 
+
+
 generating:
+  existed_folder: './data/merged10' # or False
   folder_name: merged10
   train_target_sample_num: 51 #5000
   val_target_sample_num: 11 #1250

@@ -5,6 +5,7 @@ import os
 import cv2
 from tqdm import tqdm
 from collections import defaultdict
+import pickle
 
 import torch
 import torch.nn as nn
@@ -258,6 +259,8 @@ def main(config):
     val_ratio = config.data.val_ratio
     using_existed_merged_exp = config.train.using_existed_merged_exp
     
+    existed_folder = config.generating.existed_folder
+    
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     
     seed_everything(config.train.seed) # Seed 고정
@@ -268,106 +271,112 @@ def main(config):
     df = pd.read_csv(config.data_dir.block_train)
     sums = np.sum(df[labels],axis=1)
     df['sums'] = sums
+    if not existed_folder:
+        if using_existed_merged_exp==False or using_existed_merged_exp==None:
+            # split train, val
+            temp_sums_dict = {}
+            sums_list = df['sums'].tolist()
+            for i in range(len(sums_list)):
+                sums = sums_list[i]
+                if sums not in temp_sums_dict.keys():
+                    temp_sums_dict[sums] = []
 
-    if using_existed_merged_exp==False or using_existed_merged_exp==None:
-        # split train, val
-        temp_sums_dict = {}
-        sums_list = df['sums'].tolist()
-        for i in range(len(sums_list)):
-            sums = sums_list[i]
-            if sums not in temp_sums_dict.keys():
-                temp_sums_dict[sums] = []
+                temp_sums_dict[sums].append(i)
 
-            temp_sums_dict[sums].append(i)
+            train_inds = []
+            val_inds = []
+            split_least_num = int(1/val_ratio)
+            for _, values in temp_sums_dict.items():
+                length = len(values)
+                if length<split_least_num:
+                    train_inds += values
+                else:
+                    val_num = int(length*val_ratio)
+                    temp_val_inds = random.sample(values, val_num)
+                    temp_train_inds = list(set(values).difference(temp_val_inds))
 
-        train_inds = []
-        val_inds = []
-        split_least_num = int(1/val_ratio)
-        for _, values in temp_sums_dict.items():
-            length = len(values)
-            if length<split_least_num:
-                train_inds += values
-            else:
-                val_num = int(length*val_ratio)
-                temp_val_inds = random.sample(values, val_num)
-                temp_train_inds = list(set(values).difference(temp_val_inds))
+                    val_inds += temp_val_inds
+                    train_inds += temp_train_inds
 
-                val_inds += temp_val_inds
-                train_inds += temp_train_inds
+            train_df = df.loc[train_inds, :].reset_index(drop=True)
+            val_df = df.loc[val_inds, :].reset_index(drop=True)
 
-        train_df = df.loc[train_inds, :].reset_index(drop=True)
-        val_df = df.loc[val_inds, :].reset_index(drop=True)
-
-        # generate_list
-        train_generate_num_list = []
-        val_generate_num_list = []
-        if same_class_generate_option:
-            train_generate_num_list = make_class_generate_num(train_df, 
-                                                     ratio=same_class_generate_ratio, 
-                                                     over_num=same_class_generate_over_num,
-                                                         target_num=train_target_sample_num)
-            val_generate_num_list = make_class_generate_num(val_df, 
+            # generate_list
+            train_generate_num_list = []
+            val_generate_num_list = []
+            if same_class_generate_option:
+                train_generate_num_list = make_class_generate_num(train_df, 
                                                          ratio=same_class_generate_ratio, 
                                                          over_num=same_class_generate_over_num,
-                                                           target_num=val_target_sample_num)
+                                                             target_num=train_target_sample_num)
+                val_generate_num_list = make_class_generate_num(val_df, 
+                                                             ratio=same_class_generate_ratio, 
+                                                             over_num=same_class_generate_over_num,
+                                                               target_num=val_target_sample_num)
 
 
-        train_merge_obj = merge_images(train_df, image_path='./data/train')
-        train_merged_df = overlay_data(train_generate_num_list, train_merge_obj, 
-                                         labels, save_merged_folder, 
-                                       auto_block_size=auto_block_size, type_='TRAIN')
+            train_merge_obj = merge_images(train_df, image_path='./data/train')
+            train_merged_df = overlay_data(train_generate_num_list, train_merge_obj, 
+                                             labels, save_merged_folder, 
+                                           auto_block_size=auto_block_size, type_='TRAIN')
 
 
-        val_merge_obj = merge_images(val_df, image_path='./data/train')
-        val_merged_df = overlay_data(val_generate_num_list, val_merge_obj, 
-                                         labels, save_merged_folder, 
-                                     auto_block_size=auto_block_size, type_='VAL')
+            val_merge_obj = merge_images(val_df, image_path='./data/train')
+            val_merged_df = overlay_data(val_generate_num_list, val_merge_obj, 
+                                             labels, save_merged_folder, 
+                                         auto_block_size=auto_block_size, type_='VAL')
 
-        # filtering rows
-        train_inds = []
-        for sums in np.unique(train_df['sums']):
-            inds = train_df[train_df['sums']==sums].index.tolist()
-            length = len(inds)
-            if length>train_target_sample_num:
-                inds = random.sample(inds, train_target_sample_num)
-            train_inds += inds
-        train_df = train_df.loc[train_inds,:].reset_index(drop=True)
+            # filtering rows
+            train_inds = []
+            for sums in np.unique(train_df['sums']):
+                inds = train_df[train_df['sums']==sums].index.tolist()
+                length = len(inds)
+                if length>train_target_sample_num:
+                    inds = random.sample(inds, train_target_sample_num)
+                train_inds += inds
+            train_df = train_df.loc[train_inds,:].reset_index(drop=True)
 
-        val_inds = []
-        for sums in np.unique(val_df['sums']):
-            inds = val_df[val_df['sums']==sums].index.tolist()
-            length = len(inds)
-            if length>val_target_sample_num:
-                inds = random.sample(inds, val_target_sample_num)
-            val_inds += inds
-        val_inds = val_df.loc[val_inds,:].reset_index(drop=True)
+            val_inds = []
+            for sums in np.unique(val_df['sums']):
+                inds = val_df[val_df['sums']==sums].index.tolist()
+                length = len(inds)
+                if length>val_target_sample_num:
+                    inds = random.sample(inds, val_target_sample_num)
+                val_inds += inds
+            val_inds = val_df.loc[val_inds,:].reset_index(drop=True)
 
 
-        target_cols = train_merged_df.columns.tolist()
-        train_data = pd.concat([train_df.loc[:,target_cols], train_merged_df], axis=0).reset_index(drop=True)
-        val_data = pd.concat([val_df.loc[:,target_cols], val_merged_df], axis=0).reset_index(drop=True)
-        
-        import pdb
-        pdb.set_trace()
-        
-        train_data.to_csv(f'{config.results_dir}/train_data.csv', index=False)
-        val_data.to_csv(f'{config.results_dir}/val_data.csv', index=False)
-        
-        
-        
-        
-        
+            target_cols = train_merged_df.columns.tolist()
+            train_data = pd.concat([train_df.loc[:,target_cols], train_merged_df], axis=0).reset_index(drop=True)
+            val_data = pd.concat([val_df.loc[:,target_cols], val_merged_df], axis=0).reset_index(drop=True)
+
+            train_data.to_csv(f'{config.results_dir}/train_data.csv', index=False)
+            val_data.to_csv(f'{config.results_dir}/val_data.csv', index=False)
+
+
+
+
+
+        else:
+            train_data = pd.read_csv(f'./exp/{using_existed_merged_exp}/train_data.csv')
+            val_data = pd.read_csv(f'./exp/{using_existed_merged_exp}/val_data.csv')
+
+        # Data Preprocessing
+
+        train_labels = get_labels(train_data)
+        val_labels = get_labels(val_data)
+
     else:
-        train_data = pd.read_csv(f'./exp/{using_existed_merged_exp}/train_data.csv')
-        val_data = pd.read_csv(f'./exp/{using_existed_merged_exp}/val_data.csv')
-    
-    # Data Preprocessing
-
-    train_labels = get_labels(train_data)
-    val_labels = get_labels(val_data)
-    
-    
-
+        train_label_path = os.path.join(existed_folder, 'TRAIN', 'labels')
+        val_label_path = os.path.join(existed_folder, 'VAL', 'labels')
+        with open(os.path.join(train_label_path, 'train_list.pkl'), 'rb') as f:
+            train_image_list = pickle.load(f)
+        with open(os.path.join(val_label_path, 'val_list.pkl'), 'rb') as f:
+            val_image_list = pickle.load(f)
+        
+        train_labels = np.load(os.path.join(train_label_path, 'train_labels.npy'))
+        val_labels = np.load(os.path.join(val_label_path, 'val_labels.npy'))
+        
     # train_transform : 여러가지 추가
     train_transform = A.Compose([
                                 A.Resize(config.train.data.img_size, config.train.data.img_size),
@@ -400,14 +409,18 @@ def main(config):
                                             max_pixel_value=255.0, always_apply=False, p=1.0),
                                 ToTensorV2()
                                 ])
-
-    train_dataset = CustomDataset(train_data['img_path'].values, train_labels, train_transform)
+    if not existed_folder:
+        train_dataset = CustomDataset(train_data['img_path'].values, train_labels, transforms=train_transform)
+        val_dataset = CustomDataset(val_data['img_path'].values, val_labels, transforms=test_transform)
+    else:
+        train_dataset = CustomDataset(train_image_list, train_labels, data_dir='', transforms=train_transform)
+        val_dataset = CustomDataset(val_image_list, val_labels, data_dir='', transforms=test_transform)
+        
     train_loader = DataLoader(train_dataset, batch_size = config.train.batch_size, shuffle=True,
                               num_workers=config.train.num_workers)
 
-    val_dataset = CustomDataset(val_data['img_path'].values, val_labels, test_transform)
+    
     val_loader = DataLoader(val_dataset, batch_size = config.train.batch_size, shuffle=False, num_workers=0)
-
 
     #run
     model = BaseModel()
