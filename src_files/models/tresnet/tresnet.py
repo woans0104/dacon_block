@@ -162,6 +162,7 @@ class TResNet(Module):
         # head
         self.global_pool = nn.Sequential(OrderedDict([('global_pool_layer', global_pool_layer)]))
         self.num_features = (self.planes * 8) * Bottleneck.expansion
+
         fc = nn.Linear(self.num_features, num_classes)
         self.head = nn.Sequential(OrderedDict([('fc', fc)]))
 
@@ -211,7 +212,7 @@ def TResnetS(model_params):
     """Constructs a small TResnet model.
     """
     in_chans = 3
-    num_classes = model_params['num_classes']
+    num_classes = int(model_params['num_classes'])
     args = model_params['args']
     model = TResNet(layers=[3, 4, 6, 3], num_classes=num_classes, in_chans=in_chans)
     return model
@@ -220,7 +221,7 @@ def TResnetM(model_params):
     """Constructs a medium TResnet model.
     """
     in_chans = 3
-    num_classes = model_params['num_classes']
+    num_classes = int(model_params['num_classes'])
     model = TResNet(layers=[3, 4, 11, 3], num_classes=num_classes, in_chans=in_chans)
     return model
 
@@ -229,8 +230,9 @@ def TResnetL(model_params):
     """Constructs a large TResnet model.
     """
     in_chans = 3
-    num_classes = model_params['num_classes']
+    num_classes = int(model_params['num_classes'])
     layers_list = [3, 4, 23, 3]
+
     model = TResNet(layers=layers_list, num_classes=num_classes, in_chans=in_chans, first_two_layers=Bottleneck)
     return model
 
@@ -238,7 +240,7 @@ def TResnetXL(model_params):
     """Constructs a large TResnet model.
     """
     in_chans = 3
-    num_classes = model_params['num_classes']
+    num_classes = int(model_params['num_classes'])
     layers_list = [3, 8, 34, 5]
     model = TResNet(layers=layers_list, num_classes=num_classes, in_chans=in_chans, first_two_layers=Bottleneck)
     return model

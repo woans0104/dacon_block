@@ -7,19 +7,22 @@ import torch.optim
 import torch.utils.data.distributed
 import torchvision.transforms as transforms
 from torch.optim import lr_scheduler
-from src_files.helper_functions.helper_functions import mAP, CocoDetection, CutoutPIL, ModelEma, \
-    add_weight_decay
+from src_files.helper_functions.helper_functions import mAP, CocoDetection, CutoutPIL, ModelEma, CustomDataset, add_weight_decay
 from src_files.models import create_model
 from src_files.loss_functions.losses import AsymmetricLoss
 from randaugment import RandAugment
 from torch.cuda.amp import GradScaler, autocast
+import yaml
+import shutil
+from pathlib import Path
+
 
 parser = argparse.ArgumentParser(description='PyTorch MS_COCO Training')
 parser.add_argument('--data', type=str, default='/home/MSCOCO_2014/')
 parser.add_argument('--lr', default=1e-4, type=float)
 parser.add_argument('--model-name', default='tresnet_l')
 parser.add_argument('--model-path', default='https://miil-public-eu.oss-eu-central-1.aliyuncs.com/model-zoo/ML_Decoder/tresnet_l_pretrain_ml_decoder.pth', type=str)
-parser.add_argument('--num-classes', default=80)
+parser.add_argument('--num-classes', default=80, type=int)
 parser.add_argument('-j', '--workers', default=8, type=int, metavar='N',
                     help='number of data loading workers')
 parser.add_argument('--image-size', default=448, type=int,
@@ -35,7 +38,24 @@ parser.add_argument('--zsl', default=0, type=int)
 
 def main():
     args = parser.parse_args()
-
+    YAML_FILE = 'train.yaml'
+    with open(f'./config/{YAML_FILE}') as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
+    
+    train_data_list_dir = config['data_dir']['train_data_list_dir']
+    train_labels_path = config['data_dir']['train_labels_path']
+    val_data_list_dir = config['data_dir']['val_data_list_dir']
+    val_labels_path = config['data_dir']['val_labels_path']
+    save_folder_name = config['save']['folder_name']
+    epoch = config['train']['epoch']
+    
+    result_path = os.path.join('./result', save_folder_name)
+    Path(os.path.join(result_path, 'models')).mkdir(parents=True, exist_ok=True)
+    shutil.copy(
+        "config/" + YAML_FILE, os.path.join(result_path, YAML_FILE)
+    )
+    
+    
     # Setup model
     print('creating model {}...'.format(args.model_name))
     model = create_model(args).cuda()
@@ -47,21 +67,23 @@ def main():
     print('done')
 
     # COCO Data loading
-    instances_path_val = os.path.join(args.data, 'annotations/instances_val2014.json')
-    instances_path_train = os.path.join(args.data, 'annotations/instances_train2014.json')
+    #instances_path_val = os.path.join(args.data, 'annotations/instances_val2014.json')
+    #instances_path_train = os.path.join(args.data, 'annotations/instances_train2014.json')
     #data_path_val = args.data
     #data_path_train = args.data
-    data_path_val = f'{args.data}/val2014'  # args.data
-    data_path_train = f'{args.data}/train2014'  # args.data
-    val_dataset = CocoDetection(data_path_val,
-                                instances_path_val,
+    #data_path_val = f'{args.data}/val2014'  # args.data
+    #data_path_train = f'{args.data}/train2014'  # args.data
+    
+
+    train_dataset = CustomDataset(train_data_list_dir,
+                                train_labels_path,
                                 transforms.Compose([
                                     transforms.Resize((args.image_size, args.image_size)),
                                     transforms.ToTensor(),
                                     # normalize, # no need, toTensor does normalization
                                 ]))
-    train_dataset = CocoDetection(data_path_train,
-                                  instances_path_train,
+    val_dataset = CustomDataset(val_data_list_dir,
+                                  val_labels_path,
                                   transforms.Compose([
                                       transforms.Resize((args.image_size, args.image_size)),
                                       CutoutPIL(cutout_factor=0.5),
@@ -69,6 +91,7 @@ def main():
                                       transforms.ToTensor(),
                                       # normalize,
                                   ]))
+ 
     print("len(val_dataset)): ", len(val_dataset))
     print("len(train_dataset)): ", len(train_dataset))
 
@@ -82,14 +105,14 @@ def main():
         num_workers=args.workers, pin_memory=False)
 
     # Actuall Training
-    train_multi_label_coco(model, train_loader, val_loader, args.lr)
+    train_multi_label_coco(model, train_loader, val_loader, args.lr, result_path, epoch)
 
 
-def train_multi_label_coco(model, train_loader, val_loader, lr):
+def train_multi_label_coco(model, train_loader, val_loader, lr, save_path, Epochs):
     ema = ModelEma(model, 0.9997)  # 0.9997^641=0.82
 
     # set optimizer
-    Epochs = 40
+    #Epochs = 40
     weight_decay = 1e-4
     criterion = AsymmetricLoss(gamma_neg=4, gamma_pos=0, clip=0.05, disable_torch_grad_focal_loss=True)
     parameters = add_weight_decay(model, weight_decay)
@@ -105,9 +128,11 @@ def train_multi_label_coco(model, train_loader, val_loader, lr):
         for i, (inputData, target) in enumerate(train_loader):
             inputData = inputData.cuda()
             target = target.cuda()
-            target = target.max(dim=1)[0]
+
+            #target = target.max(dim=1)[0]
             with autocast():  # mixed precision
                 output = model(inputData).float()  # sigmoid will be done in loss !
+
             loss = criterion(output, target)
             model.zero_grad()
 
@@ -130,8 +155,8 @@ def train_multi_label_coco(model, train_loader, val_loader, lr):
                               loss.item()))
 
         try:
-            torch.save(model.state_dict(), os.path.join(
-                'models/', 'model-{}-{}.ckpt'.format(epoch + 1, i + 1)))
+            torch.save(model.state_dict(), os.path.join(save_path,
+                'models', 'model-{}-{}.ckpt'.format(epoch + 1, i + 1)))
         except:
             pass
 
@@ -142,8 +167,8 @@ def train_multi_label_coco(model, train_loader, val_loader, lr):
         if mAP_score > highest_mAP:
             highest_mAP = mAP_score
             try:
-                torch.save(model.state_dict(), os.path.join(
-                    'models/', 'model-highest.ckpt'))
+                torch.save(model.state_dict(), os.path.join(save_path, 
+                    'models', 'model-highest.ckpt'))
             except:
                 pass
         print('current_mAP = {:.2f}, highest_mAP = {:.2f}\n'.format(mAP_score, highest_mAP))
@@ -157,7 +182,7 @@ def validate_multi(val_loader, model, ema_model):
     targets = []
     for i, (input, target) in enumerate(val_loader):
         target = target
-        target = target.max(dim=1)[0]
+
         # compute output
         with torch.no_grad():
             with autocast():

@@ -3,6 +3,7 @@ from copy import deepcopy
 import random
 import time
 from copy import deepcopy
+import pickle
 
 import numpy as np
 from PIL import Image
@@ -53,6 +54,7 @@ def mAP(targs, preds):
         return 0
     ap = np.zeros((preds.shape[1]))
     # compute average precision for each class
+
     for k in range(preds.shape[1]):
         # sort scores
         scores = preds[:, k]
@@ -93,6 +95,36 @@ class AverageMeter(object):
         self.ema = self.ema * 0.99 + self.val * 0.01
 
 
+class CustomDataset(data.Dataset):
+    def __init__(self, data_list_dir, labels_path,
+                transform=None, target_transform=None):
+        with open(data_list_dir, 'rb') as f:
+            self.coco = pickle.load(f)
+        self.input_transform = transform
+        self.labels_path = labels_path
+        self.target_transform = target_transform
+        self.labels = np.load(self.labels_path).astype(np.float64)
+        #self.labels = torch.from_numpy(self.labels)
+
+    def __len__(self):
+        return len(self.coco)
+    
+    
+    def __getitem__(self, index):
+        #input = self.coco[index][0]
+        input = Image.open(self.coco[index]).convert('RGB')
+        target = self.labels[index]
+
+        if self.input_transform:
+            input = self.input_transform(input)
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+        
+        return input, target
+        
+        
+        
+        
 class CocoDetection(datasets.coco.CocoDetection):
     def __init__(self, root, annFile, transform=None, target_transform=None):
         self.root = root

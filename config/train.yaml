@@ -1,0 +1,12 @@
+data_dir:
+  train_data_list_dir: ./data/merged10/TRAIN/labels/train_list.pkl
+  train_labels_path: ./data/merged10/TRAIN/labels/train_labels.npy
+  val_data_list_dir: ./data/merged10/VAL/labels/val_list.pkl
+  val_labels_path: ./data/merged10/VAL/labels/val_labels.npy
+  
+  
+save:
+  folder_name: merged1
+  
+train:
+  epoch: 30
