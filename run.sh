@@ -9,8 +9,8 @@ SET=$(seq 1 1 1)
 for i in $SET
 
 do
-  CUDA_VISIBLE_DEVICES=0,1 python3 main.py --yaml="train_merge9"
-  #CUDA_VISIBLE_DEVICES=0,1 python3 eval.py --yaml="eval_merge8"
+  CUDA_VISIBLE_DEVICES=0,1 python3 main.py --yaml="train_merge10"
+  #CUDA_VISIBLE_DEVICES=0,1 python3 eval.py --yaml="eval_merge9"
 
 
 done

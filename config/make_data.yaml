@@ -1,0 +1,28 @@
+results_dir: "./exp1/"
+wandb_opt: False
+
+data_dir:
+  block_train: "./data/train.csv"
+
+data:
+  val_ratio: 0.2
+
+train:
+  seed: 41
+  using_existed_merged_exp: False # or False
+
+split_method:
+  rigid_split: True
+
+generating:
+  folder_name: merged11
+  train_target_sample_num: 5000 #5000
+  val_target_sample_num: 0 #1250 -> merge10 : 0
+  auto_block_size: False
+  same_class_generate: 
+    option: True
+    ratio: 1
+    over_num: 2
+    generating: True
+    
+

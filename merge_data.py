@@ -18,7 +18,7 @@ class merge_images:
         self.x_move_ratio = x_move_ratio
         self.y_move_ratio = y_move_ratio
         self.default_image_size = default_image_size
-
+        self.material_max_blocks = material_max_blocks
     
         self.true_labels = ['A','B','C','D','E','F','G','H','I','J']
         self.cand_dict = {1:([1]), 2:([2],[1,1]), 3:([3],[1,2],[1,1,1]), 4:([4],[1,3],[2,2],[1,1,2]),
@@ -28,13 +28,13 @@ class merge_images:
         
         
         if 'label_sum' in df.columns: 
-            filter_df = df[df['label_sum']<=material_max_blocks]
+            filter_df = df[df['label_sum']<=self.material_max_blocks]
         
         else:
             df['label_sum'] = np.sum(df.loc[:,self.true_labels], axis=1)
-            filter_df = df[df['label_sum']<=material_max_blocks]
+            filter_df = df[df['label_sum']<=self.material_max_blocks]
             
-        filter_df = filter_df[filter_df['label_sum']<=material_max_blocks][[id_col,'label_sum']+self.true_labels]
+        filter_df = filter_df[filter_df['label_sum']<=self.material_max_blocks][[id_col,'label_sum']+self.true_labels]
 
         id_list = filter_df[id_col].tolist()
         sum_list = filter_df['label_sum'].tolist()
@@ -113,7 +113,7 @@ class merge_images:
                 if rest_num==1:
                     block_num=1
                 else:
-                    block_num = random.choice([i for i in range(1, rest_num) if i not in except_num_set])
+                    block_num = min(random.choice([i for i in range(1, rest_num) if i not in except_num_set]), self.material_max_blocks)
                 block_labels = tuple(random.sample(rest_label_set, block_num))
                 if block_labels not in self.pool_dict[block_num].keys():
                     if block_num==1:

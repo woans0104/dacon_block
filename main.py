@@ -346,9 +346,15 @@ def main(config):
         target_cols = train_merged_df.columns.tolist()
         train_data = pd.concat([train_df.loc[:,target_cols], train_merged_df], axis=0).reset_index(drop=True)
         val_data = pd.concat([val_df.loc[:,target_cols], val_merged_df], axis=0).reset_index(drop=True)
-
+        
+        import pdb
+        pdb.set_trace()
+        
         train_data.to_csv(f'{config.results_dir}/train_data.csv', index=False)
         val_data.to_csv(f'{config.results_dir}/val_data.csv', index=False)
+        
+        
+        
         
         
     else:
