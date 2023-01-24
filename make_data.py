@@ -22,6 +22,23 @@ warnings.filterwarnings(action='ignore')
 from randimage import get_random_image
 from merge_data import merge_images, extract_img
 
+import albumentations as A
+transform = A.Compose([
+                    A.OneOf([
+                        A.ColorJitter(p=1),
+                        A.RandomBrightnessContrast(p=1),
+                        A.HueSaturationValue(p=1)
+                    ],p=.33),
+                    A.OneOf([
+                        A.Rotate(p=1, limit=(-10,10)),
+                        A.Flip(p=1)
+                    ], p=.33),
+                    A.OneOf([
+                        A.Affine(p=1),
+                        A.ElasticTransform(p=1)
+                    ], p=.33)
+                    ])
+
 LABEL_ID = {'A':0, 'B':1, 'C':2, 'D':3, 'E':4, 'F':5, 'G':6, 'H':7, 'I':8 ,'J':9}
 YAML_FILE = 'make_data'
 
@@ -136,10 +153,16 @@ def main(config):
     seed_everything(config.seed) 
     save_merged_folder = config.generating.folder_name
 
-    
+    background_split_train_val = config.generating.background.split_train_val
     # background folder 생성
-    background_save_path = os.path.join('./data', save_merged_folder, 'background')
+    background_save_path = os.path.join('./data', save_merged_folder, 'TRAIN', 'background')
     Path(background_save_path).mkdir(parents=True, exist_ok=True)
+    
+    val_background_save_path = ''
+    if background_split_train_val:
+        val_background_save_path = os.path.join('./data', save_merged_folder, 'VAL', 'background')
+        Path(val_background_save_path).mkdir(parents=True, exist_ok=True)
+    
     
     # data 생성 yaml 파일 저장
     shutil.copy(
@@ -159,7 +182,7 @@ def main(config):
     val_ratio = config.data.val_ratio
     train_ratio = 1-val_ratio
     
-    rigid_split = config.sampling.rigid_split
+    split_method = config.sampling.split_method
     under_sampling_option = config.sampling.under_sampling
     
     make_test = config.make_test.make_test
@@ -168,17 +191,33 @@ def main(config):
     background_option = config.generating.background.option
     background_num = config.generating.background.num
     background_existed_path = config.generating.background.existed_path
+    val_background_existed_path = config.generating.background.val_existed_path
+    
+    train_transform_option = config.augmentation.train_transform_option
+    val_transform_option = config.augmentation.val_transform_option
     
     # background 사용시 background 데이터 생성함
     background_path_list = []
+    val_background_path_list = []
     if background_option:
-        make_background(background_save_path, background_num)
+        
+        if background_existed_path:
+            background_path_list = [f'{os.path.join(background_save_path, file)}' for file in os.listdir(background_existed_path)]
+        else:
+            make_background(background_save_path, background_num)
+            background_path_list = [f'{os.path.join(background_save_path, file)}' for file in os.listdir(background_save_path)]
+        
+        
+        if val_background_existed_path:
+            val_background_path_list = [f'{os.path.join(background_save_path, file)}' for file in os.listdir(val_background_existed_path)]
+        else:
+            if background_split_train_val:
+                make_background(val_background_save_path, background_num)
+                val_background_path_list = [f'{os.path.join(val_background_save_path, file)}' for file in os.listdir(val_background_save_path)]
+            else:
+                val_background_path_list = background_path_list.copy()
 
-        background_path_list = [f'{os.path.join(background_save_path, file)}' for file in os.listdir(background_save_path)]
-    elif not background_option and background_existed_path:
-        background_path_list = [f'{os.path.join(background_save_path, file)}' for file in os.listdir(background_existed_path)]
-    
-
+            
     # Data 초기화
     labels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']
     # Data Load
@@ -188,7 +227,7 @@ def main(config):
     df['sums'] = sums
     
     # class, 블록개수 기준으로 train, valid 나눔 : 별 효과 없어서 안 쓸 것임
-    if rigid_split:
+    if split_method=='rigid_split':
 
         label_list = [[] for _ in range(df.shape[0])]
         for label in labels:
@@ -272,21 +311,21 @@ def main(config):
                 target_inds = [i for i in range(start_index, end_index)]
                 val_inds += target_inds
 
-            
-    # 블록 개수 기준으로 train, val 나눔
-    """
-    process
-    - train, val에 해당하는 데이터 나눔 : 가진 데이터 기준으로만 생성할 것임
-    - generate (합성)
-      - train_target_sample_num, val_target_sample_num 기준으로 블록개수 당 generate해야 할 개수 구함
-        - block이 1개인 경우는 제외함
-      - 데이터 generate
-    - train, val에 대해 정한 개수 넘는 블록개수에 해당하는 데이터는 random sample로 개수 조절함
-    - 원본 데이터도 합성한 데이터의 폴더에 저장함
-      - 배경 지정한 경우 배경 씌워서 저장함.
-    """
-    else:
-        
+
+    elif split_method=='uniform':
+                    
+        # 블록 개수 기준으로 train, val 나눔
+        """
+        process
+        - train, val에 해당하는 데이터 나눔 : 가진 데이터 기준으로만 생성할 것임
+        - generate (합성)
+          - train_target_sample_num, val_target_sample_num 기준으로 블록개수 당 generate해야 할 개수 구함
+            - block이 1개인 경우는 제외함
+          - 데이터 generate
+        - train, val에 대해 정한 개수 넘는 블록개수에 해당하는 데이터는 random sample로 개수 조절함
+        - 원본 데이터도 합성한 데이터의 폴더에 저장함
+          - 배경 지정한 경우 배경 씌워서 저장함.
+        """
         # split train, val
         temp_sums_dict = {}
         sums_list = df['sums'].tolist()
@@ -312,10 +351,17 @@ def main(config):
                 val_inds += temp_val_inds
                 train_inds += temp_train_inds
     
+    else:
+        df = df.sample(frac=1)
+        train_len = int(len(df) * train_ratio)
+
+        train_inds = df[:train_len].index.tolist()
+        val_inds = df[train_len:].index.tolist()
+        
     # 정한 기준으로 train, val 나눔
     train_df = df.loc[train_inds, :].reset_index(drop=True)
     val_df = df.loc[val_inds, :].reset_index(drop=True)
-
+    
     
     # generate_list
     train_generate_num_list = []
@@ -345,13 +391,12 @@ def main(config):
     type_ = 'VAL'
     val_img_save_path = os.path.join('./data', save_merged_folder, type_, 'images')
     val_label_save_path = os.path.join('./data', save_merged_folder, type_, 'labels')
-    
-    
-    val_merge_obj = merge_images(val_df, image_path='./data/train', background_path=background_path_list)
+
+    val_merge_obj = merge_images(val_df, image_path='./data/train', background_path=val_background_path_list)
     val_img_paths, val_label_list = overlay_data(val_generate_num_list, val_merge_obj, 
                                      labels, val_img_save_path, val_label_save_path, 
                                  auto_block_size=auto_block_size, type_=type_)
-
+    
     
     # train_target_sample_num 넘는 경우 제외함
     if train_target_sample_num and under_sampling_option:
@@ -368,7 +413,7 @@ def main(config):
     train_id_list = train_df['id'].tolist()
     origin_train_image_path = [f'./data/train/{id_}.jpg' for id_ in train_id_list]
     add_train_img_paths = [f'{train_img_save_path}/{id_}.jpg' for id_ in train_id_list]
-    for i in range(len(origin_train_image_path)):
+    for i in tqdm(range(len(origin_train_image_path))):
         origin_path = origin_train_image_path[i]
         new_path = add_train_img_paths[i]
         
@@ -383,6 +428,11 @@ def main(config):
             
             for y, x in zip(bbox_y_list, bbox_x_list):
                 back_ground[y, x] = new_bbox[y,x,:]
+                
+                
+            if train_transform_option:
+                back_ground = transform(image=back_ground)['image']
+                
             cv2.imwrite(new_path, back_ground)
         
     add_train_label_list = train_df[labels].values.tolist()
@@ -403,20 +453,25 @@ def main(config):
     val_id_list = val_df['id'].tolist()
     origin_val_image_path = [f'./data/train/{id_}.jpg' for id_ in val_id_list]
     add_val_img_paths = [f'{val_img_save_path}/{id_}.jpg' for id_ in val_df['id'].tolist()]
-    for i in range(len(origin_val_image_path)):
+    for i in tqdm(range(len(origin_val_image_path))):
         origin_path = origin_val_image_path[i]
         new_path = add_val_img_paths[i]
-        if not background_path_list:
+        if not background_path_list and not val_background_path_list and not transform_option:
             shutil.copy(origin_path, new_path)
             
         else:
-            background_target = random.choice(background_path_list)
-            back_ground = cv2.imread(background_target)
-            new_bbox, bbox_mask = extract_img(origin_path)
-            bbox_y_list, bbox_x_list = np.where(bbox_mask<255)
-            
-            for y, x in zip(bbox_y_list, bbox_x_list):
-                back_ground[y, x] = new_bbox[y,x,:]
+            if background_path_list or val_background_path_list:
+                background_target = random.choice(val_background_path_list)
+                back_ground = cv2.imread(background_target)
+                new_bbox, bbox_mask = extract_img(origin_path)
+                bbox_y_list, bbox_x_list = np.where(bbox_mask<255)
+
+                for y, x in zip(bbox_y_list, bbox_x_list):
+                    back_ground[y, x] = new_bbox[y,x,:]
+                
+            if val_transform_option:
+                back_ground = transform(image=back_ground)['image']
+                
             cv2.imwrite(new_path, back_ground)
             
     add_val_label_list = val_df[labels].values.tolist()
