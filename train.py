@@ -7,7 +7,7 @@ import torch.optim
 import torch.utils.data.distributed
 import torchvision.transforms as transforms
 from torch.optim import lr_scheduler
-from src_files.helper_functions.helper_functions import mAP, CocoDetection, CutoutPIL, ModelEma, CustomDataset, add_weight_decay
+from src_files.helper_functions.helper_functions import mAP, CutoutPIL, ModelEma, CustomDataset, add_weight_decay
 from src_files.models import create_model
 from src_files.loss_functions.losses import AsymmetricLoss
 from randaugment import RandAugment
@@ -18,23 +18,21 @@ from pathlib import Path
 
 
 parser = argparse.ArgumentParser(description='PyTorch MS_COCO Training')
-parser.add_argument('--data', type=str, default='/home/MSCOCO_2014/')
-parser.add_argument('--lr', default=1e-4, type=float)
-parser.add_argument('--model-name', default='tresnet_l')
-parser.add_argument('--model-path', default='https://miil-public-eu.oss-eu-central-1.aliyuncs.com/model-zoo/ML_Decoder/tresnet_l_pretrain_ml_decoder.pth', type=str)
-parser.add_argument('--num-classes', default=80, type=int)
-parser.add_argument('-j', '--workers', default=8, type=int, metavar='N',
-                    help='number of data loading workers')
-parser.add_argument('--image-size', default=448, type=int,
-                    metavar='N', help='input image size (default: 448)')
-parser.add_argument('--batch-size', default=56, type=int,
-                    metavar='N', help='mini-batch size')
+#parser.add_argument('--data', type=str, default='/home/MSCOCO_2014/')
+#parser.add_argument('--lr', default=1e-4, type=float)
+#parser.add_argument('--model-name', default='tresnet_l')
+#parser.add_argument('--model-path', default='https://miil-public-eu.oss-eu-central-1.aliyuncs.com/model-zoo/ML_Decoder/tresnet_l_pretrain_ml_decoder.pth', type=str)
+#parser.add_argument('--num-classes', default=80, type=int)
+
+#parser.add_argument('-j', '--workers', default=8, type=int, metavar='N', help='number of data loading workers')
+#parser.add_argument('--image-size', default=448, type=int, metavar='N', help='input image size (default: 448)')
+#parser.add_argument('--batch-size', default=56, type=int, metavar='N', help='mini-batch size')
 
 # ML-Decoder
-parser.add_argument('--use-ml-decoder', default=1, type=int)
-parser.add_argument('--num-of-groups', default=-1, type=int)  # full-decoding
-parser.add_argument('--decoder-embedding', default=768, type=int)
-parser.add_argument('--zsl', default=0, type=int)
+#parser.add_argument('--use-ml-decoder', default=1, type=int)
+#parser.add_argument('--num-of-groups', default=-1, type=int)  # full-decoding
+#parser.add_argument('--decoder-embedding', default=768, type=int)
+#parser.add_argument('--zsl', default=0, type=int)
 
 def main():
     args = parser.parse_args()
@@ -48,18 +46,23 @@ def main():
     val_labels_path = config['data_dir']['val_labels_path']
     save_folder_name = config['save']['folder_name']
     epoch = config['train']['epoch']
+    lr = config['train']['lr']
     
-    result_path = os.path.join('./result', save_folder_name)
+    img_size = config['model']['img_size']
+    batch_size = config['train']['batch_size']
+    workers = config['train']['workers']
+    
+    result_path = os.path.join('./result', 'train', save_folder_name)
     Path(os.path.join(result_path, 'models')).mkdir(parents=True, exist_ok=True)
     shutil.copy(
         "config/" + YAML_FILE, os.path.join(result_path, YAML_FILE)
     )
     
-    
+    model_config = config['model']
     # Setup model
-    print('creating model {}...'.format(args.model_name))
-    model = create_model(args).cuda()
-
+    print('creating model {}...'.format(model_config))
+    #model = create_model(args).cuda()
+    model = create_model(model_config).cuda()
     # local_rank = torch.distributed.get_rank()
     # torch.cuda.set_device(0)
     # model = torch.nn.DataParallel(model,device_ids=[0])
@@ -75,17 +78,17 @@ def main():
     #data_path_train = f'{args.data}/train2014'  # args.data
     
 
-    train_dataset = CustomDataset(train_data_list_dir,
-                                train_labels_path,
+    val_dataset = CustomDataset(val_data_list_dir,
+                                val_labels_path,
                                 transforms.Compose([
-                                    transforms.Resize((args.image_size, args.image_size)),
+                                    transforms.Resize((img_size, img_size)),
                                     transforms.ToTensor(),
                                     # normalize, # no need, toTensor does normalization
                                 ]))
-    val_dataset = CustomDataset(val_data_list_dir,
-                                  val_labels_path,
+    train_dataset = CustomDataset(train_data_list_dir,
+                                  train_labels_path,
                                   transforms.Compose([
-                                      transforms.Resize((args.image_size, args.image_size)),
+                                      transforms.Resize((img_size, img_size)),
                                       CutoutPIL(cutout_factor=0.5),
                                       RandAugment(),
                                       transforms.ToTensor(),
@@ -97,15 +100,15 @@ def main():
 
     # Pytorch Data loader
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=True,
-        num_workers=args.workers, pin_memory=True)
+        train_dataset, batch_size=batch_size, shuffle=True,
+        num_workers=workers, pin_memory=True)
 
     val_loader = torch.utils.data.DataLoader(
-        val_dataset, batch_size=args.batch_size, shuffle=False,
-        num_workers=args.workers, pin_memory=False)
+        val_dataset, batch_size=batch_size, shuffle=False,
+        num_workers=workers, pin_memory=False)
 
     # Actuall Training
-    train_multi_label_coco(model, train_loader, val_loader, args.lr, result_path, epoch)
+    train_multi_label_coco(model, train_loader, val_loader, lr, result_path, epoch)
 
 
 def train_multi_label_coco(model, train_loader, val_loader, lr, save_path, Epochs):
@@ -125,7 +128,7 @@ def train_multi_label_coco(model, train_loader, val_loader, lr, save_path, Epoch
     trainInfoList = []
     scaler = GradScaler()
     for epoch in range(Epochs):
-        for i, (inputData, target) in enumerate(train_loader):
+        for i, (inputData, target, _) in enumerate(train_loader):
             inputData = inputData.cuda()
             target = target.cuda()
 
@@ -180,7 +183,7 @@ def validate_multi(val_loader, model, ema_model):
     preds_regular = []
     preds_ema = []
     targets = []
-    for i, (input, target) in enumerate(val_loader):
+    for i, (input, target, _) in enumerate(val_loader):
         target = target
 
         # compute output

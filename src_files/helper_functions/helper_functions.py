@@ -96,15 +96,18 @@ class AverageMeter(object):
 
 
 class CustomDataset(data.Dataset):
-    def __init__(self, data_list_dir, labels_path,
+    def __init__(self, data_list_dir, labels_path=None,
                 transform=None, target_transform=None):
         with open(data_list_dir, 'rb') as f:
             self.coco = pickle.load(f)
         self.input_transform = transform
         self.labels_path = labels_path
         self.target_transform = target_transform
-        self.labels = np.load(self.labels_path).astype(np.float64)
-        #self.labels = torch.from_numpy(self.labels)
+        if self.labels_path:
+            self.labels = np.load(self.labels_path).astype(np.float64)
+        else:
+            self.labels = None
+
 
     def __len__(self):
         return len(self.coco)
@@ -112,16 +115,21 @@ class CustomDataset(data.Dataset):
     
     def __getitem__(self, index):
         #input = self.coco[index][0]
-        input = Image.open(self.coco[index]).convert('RGB')
-        target = self.labels[index]
+        file_id = self.coco[index]
+        input = Image.open(file_id).convert('RGB')
+        
 
         if self.input_transform:
             input = self.input_transform(input)
-        if self.target_transform is not None:
-            target = self.target_transform(target)
         
-        return input, target
-        
+        if self.labels_path:
+            target = self.labels[index]
+            if self.target_transform is not None:
+                target = self.target_transform(target)
+
+            return input, target, file_id
+        else:
+            return input, file_id
         
         
         

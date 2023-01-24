@@ -4,9 +4,25 @@ data_dir:
   val_data_list_dir: ./data/merged10/VAL/labels/val_list.pkl
   val_labels_path: ./data/merged10/VAL/labels/val_labels.npy
   
-  
 save:
-  folder_name: merged1
+  folder_name: merged2
+  
+model:
+  model_name: tresnet_l
+  model_path: https://miil-public-eu.oss-eu-central-1.aliyuncs.com/model-zoo/ML_Decoder/tresnet_l_pretrain_ml_decoder.pth
+  num_classes: 10
+  use_ml_decoder: 1
+  num_of_groups: -1
+  decoder_embedding: 768
+  img_size: 448
+  zsl: 0
+  num_classes: 10
+  
   
 train:
   epoch: 30
+  
+  
+  lr: 0.0001
+  batch_size: 24
+  workers: 8

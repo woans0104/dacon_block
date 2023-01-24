@@ -1,0 +1,16 @@
+save:
+  folder_name: merged1
+  
+train:
+  folder_name: merged1
+  
+data_dir:
+  data_list_dir: ./data/merged10/TEST/labels/test_list.pkl
+  labels_path: False
+
+infer:
+  th: 0.75 #0.75
+  top_k : 20
+  batch_size: 48
+  workers: 8
+  model_path: ./result/train/merged1/models/model-highest.ckpt
