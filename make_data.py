@@ -133,7 +133,7 @@ def make_background(background_save_path, background_num, img_size=(400,400)):
 def main(config):
     
     # seed 고정
-    seed_everything(config.train.seed) 
+    seed_everything(config.seed) 
     save_merged_folder = config.generating.folder_name
 
     
@@ -159,7 +159,8 @@ def main(config):
     val_ratio = config.data.val_ratio
     train_ratio = 1-val_ratio
     
-    rigid_split = config.split_method.rigid_split
+    rigid_split = config.sampling.rigid_split
+    under_sampling_option = config.sampling.under_sampling
     
     make_test = config.make_test.make_test
     test_folder_name = config.make_test.test_folder_name
@@ -353,7 +354,7 @@ def main(config):
 
     
     # train_target_sample_num 넘는 경우 제외함
-    if train_target_sample_num:
+    if train_target_sample_num and under_sampling_option:
         train_inds = []
         for sums in np.unique(train_df['sums']):
             inds = train_df[train_df['sums']==sums].index.tolist()
@@ -387,7 +388,7 @@ def main(config):
     add_train_label_list = train_df[labels].values.tolist()
     
     # val_target_sample_num 넘는 경우 제외함
-    if val_target_sample_num:
+    if val_target_sample_num and under_sampling_option:
         val_inds = []
         for sums in np.unique(val_df['sums']):
             inds = val_df[val_df['sums']==sums].index.tolist()
