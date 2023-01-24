@@ -9,7 +9,7 @@ data:
 
 train:
   seed: 41
-  epoch: 100
+  epoch: 10
   batch_size: 64
   lr: 0.0003
   num_workers: 4
@@ -18,12 +18,11 @@ train:
   using_existed_merged_exp: False # or False
 
 
-
 generating:
-  existed_folder: './data/merged10' # or False
-  folder_name: merged10
-  train_target_sample_num: 51 #5000
-  val_target_sample_num: 11 #1250
+  existed_folder: './data/merged11' # or False
+  folder_name: merged11
+  train_target_sample_num: 0 #5000
+  val_target_sample_num: 0 #1250
   auto_block_size: False
   same_class_generate: 
     option: True

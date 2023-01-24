@@ -127,6 +127,9 @@ def overlay_data(generate_num_list, merge_data_obj, labels, img_save_path, label
 
 def main(config):
     
+    
+    seed_everything(config.train.seed) # Seed 고정
+    
     save_merged_folder = config.generating.folder_name
     Path(os.path.join('./data', save_merged_folder)).mkdir(parents=True, exist_ok=True)
     shutil.copy(
@@ -148,7 +151,9 @@ def main(config):
     
     rigid_split = config.split_method.rigid_split
     
-    seed_everything(config.train.seed) # Seed 고정
+    make_test = config.make_test.make_test
+    test_folder_name = config.make_test.test_folder_name
+    
     
     labels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']
     # Data Load
@@ -185,9 +190,9 @@ def main(config):
 
             t_sum = int(t_label[-1])
             if t_sum not in split_dict.keys():
-                split_dict[t_sum] = set()
-            if t_label not in split_dict[t_sum]:
-                split_dict[t_sum].add(t_label)
+                split_dict[t_sum] = []
+            if t_label not in set(split_dict[t_sum]):
+                split_dict[t_sum].append(t_label)
 
             if t_label not in index_encode_dict.keys():
                 index_encode_dict[t_label] = (i, unique_num)
@@ -195,7 +200,7 @@ def main(config):
                 #unique_num += 1
             past_label = origin_t_label
         
-
+        
         train_inds = []
         val_inds = []
         for t_sum in split_dict.keys():
@@ -210,11 +215,11 @@ def main(config):
                 target_val_labels = []
 
             else:
+
                 target_train_labels = random.sample(t_labels, train_num)
                 t_labels = set(t_labels).difference(target_train_labels)
                 target_val_labels = list(t_labels)
-
-
+                
 
             for target_label in target_train_labels:
                 start_index, unique_num = index_encode_dict[target_label]
@@ -241,7 +246,7 @@ def main(config):
                 target_inds = [i for i in range(start_index, end_index)]
                 val_inds += target_inds
 
-
+            
         
     else:
         # split train, val
@@ -272,6 +277,7 @@ def main(config):
     train_df = df.loc[train_inds, :].reset_index(drop=True)
     val_df = df.loc[val_inds, :].reset_index(drop=True)
 
+    
     # generate_list
     train_generate_num_list = []
     val_generate_num_list = []
@@ -285,7 +291,6 @@ def main(config):
                                                      over_num=same_class_generate_over_num,
                                                        target_num=val_target_sample_num)
 
-
     type_ = 'TRAIN'
     train_img_save_path = os.path.join('./data', save_merged_folder, type_, 'images')
     train_label_save_path = os.path.join('./data', save_merged_folder, type_, 'labels')
@@ -297,20 +302,24 @@ def main(config):
     type_ = 'VAL'
     val_img_save_path = os.path.join('./data', save_merged_folder, type_, 'images')
     val_label_save_path = os.path.join('./data', save_merged_folder, type_, 'labels')
+    
+
     val_merge_obj = merge_images(val_df, image_path='./data/train')
     val_img_paths, val_label_list = overlay_data(val_generate_num_list, val_merge_obj, 
                                      labels, val_img_save_path, val_label_save_path, 
                                  auto_block_size=auto_block_size, type_=type_)
+
     
     # filtering rows
-    train_inds = []
-    for sums in np.unique(train_df['sums']):
-        inds = train_df[train_df['sums']==sums].index.tolist()
-        length = len(inds)
-        if length>train_target_sample_num:
-            inds = random.sample(inds, train_target_sample_num)
-        train_inds += inds
-    train_df = train_df.loc[train_inds,:].reset_index(drop=True)
+    if train_target_sample_num:
+        train_inds = []
+        for sums in np.unique(train_df['sums']):
+            inds = train_df[train_df['sums']==sums].index.tolist()
+            length = len(inds)
+            if length>train_target_sample_num:
+                inds = random.sample(inds, train_target_sample_num)
+            train_inds += inds
+        train_df = train_df.loc[train_inds,:].reset_index(drop=True)
     
     train_id_list = train_df['id'].tolist()
     origin_train_image_path = [f'./data/train/{id_}.jpg' for id_ in train_id_list]
@@ -320,16 +329,18 @@ def main(config):
         new_path = add_train_img_paths[i]
         shutil.copy(origin_path, new_path)
     add_train_label_list = train_df[labels].values.tolist()
-
-    val_inds = []
-    for sums in np.unique(val_df['sums']):
-        inds = val_df[val_df['sums']==sums].index.tolist()
-        length = len(inds)
-        if length>val_target_sample_num:
-            inds = random.sample(inds, val_target_sample_num)
-        val_inds += inds
-    #val_inds = val_df.loc[val_inds,:].reset_index(drop=True)
-    val_df = val_df.loc[val_inds,:].reset_index(drop=True)
+    
+    
+    if val_target_sample_num:
+        val_inds = []
+        for sums in np.unique(val_df['sums']):
+            inds = val_df[val_df['sums']==sums].index.tolist()
+            length = len(inds)
+            if length>val_target_sample_num:
+                inds = random.sample(inds, val_target_sample_num)
+            val_inds += inds
+        #val_inds = val_df.loc[val_inds,:].reset_index(drop=True)
+        val_df = val_df.loc[val_inds,:].reset_index(drop=True)
     
     val_id_list = val_df['id'].tolist()
     origin_val_image_path = [f'./data/train/{id_}.jpg' for id_ in val_id_list]
@@ -339,12 +350,14 @@ def main(config):
         new_path = add_val_img_paths[i]
         shutil.copy(origin_path, new_path)
     add_val_label_list = val_df[labels].values.tolist()
+
     
     train_img_paths = train_img_paths+add_train_img_paths
     val_img_paths = val_img_paths+add_val_img_paths
     train_label_list = train_label_list+add_train_label_list
     val_label_list = val_label_list+add_val_label_list
 
+    
     with open(f'{train_label_save_path}/train_list.pkl', 'wb') as f:
         pickle.dump(train_img_paths, f)
     with open(f'{val_label_save_path}/val_list.pkl', 'wb') as f:
@@ -353,7 +366,31 @@ def main(config):
     np.save(f'{train_label_save_path}/train_labels.npy', train_label_list)
     np.save(f'{val_label_save_path}/val_labels.npy', val_label_list)
 
+    
+    if make_test:
+        test_df = pd.read_csv(config.data_dir.block_test)
+        type_ = 'TEST'
+        test_img_save_path = os.path.join('./data', test_folder_name, type_, 'images')
+        test_label_save_path = os.path.join('./data', test_folder_name, type_, 'labels')
+        
+        Path(test_img_save_path).mkdir(parents=True, exist_ok=True)
+        Path(test_label_save_path).mkdir(parents=True, exist_ok=True)
+        
+        test_id_list = test_df['id'].tolist()
+        origin_test_image_path = [f'./data/test/{id_}.jpg' for id_ in test_id_list]
+        add_test_img_paths = [f'{test_img_save_path}/{id_}.jpg' for id_ in test_id_list]
 
+        for i in range(len(origin_test_image_path)):
+            origin_path = origin_test_image_path[i]
+            new_path = add_test_img_paths[i]
+            shutil.copy(origin_path, new_path)
+        
+        test_img_paths = add_test_img_paths
+        
+
+        with open(f'{test_label_save_path}/test_list.pkl', 'wb') as f:
+            pickle.dump(test_img_paths, f)
+        
 
         
 if __name__ == '__main__':
@@ -361,7 +398,7 @@ if __name__ == '__main__':
 
     
     config = load_yaml(YAML_FILE)
-
+    
     print("-" * 20 + " Options " + "-" * 20)
     print(yaml.dump(config))
     print("-" * 40)
@@ -369,7 +406,6 @@ if __name__ == '__main__':
 
     # Duplicate yaml file to result_dir
     config = DotDict(config)
-
-
+    
     # train start
     main(config)

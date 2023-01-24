@@ -3,6 +3,7 @@ wandb_opt: False
 
 data_dir:
   block_train: "./data/train.csv"
+  block_test: "./data/test.csv"
 
 data:
   val_ratio: 0.2
@@ -15,14 +16,18 @@ split_method:
   rigid_split: True
 
 generating:
-  folder_name: merged11
-  train_target_sample_num: 5000 #5000
+  folder_name: merged12
+  train_target_sample_num: 0 #5000
   val_target_sample_num: 0 #1250 -> merge10 : 0
   auto_block_size: False
   same_class_generate: 
     option: True
-    ratio: 1
+    ratio: 0
     over_num: 2
     generating: True
+    
+make_test:
+  make_test: True
+  test_folder_name: merged12
     
 
