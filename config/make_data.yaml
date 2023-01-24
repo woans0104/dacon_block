@@ -10,24 +10,27 @@ data:
 
 train:
   seed: 41
-  using_existed_merged_exp: False # or False
 
 split_method:
-  rigid_split: True
+  rigid_split: False # 블록 개수, class 별로 하여 train, val 나눔
 
 generating:
-  folder_name: merged12
-  train_target_sample_num: 0 #5000
-  val_target_sample_num: 0 #1250 -> merge10 : 0
-  auto_block_size: False
+  folder_name: merged13 # 결과 저장 폴더 이름
+  train_target_sample_num: 5000 # 5000 -> class 당 사용하는 데이터 개수
+  val_target_sample_num: 1250 #1250 -> merge10 : 0
+  auto_block_size: False # block size 자동 조정
   same_class_generate: 
-    option: True
-    ratio: 0
-    over_num: 2
-    generating: True
+    option: True # 합성 사용 여부
+    ratio: 0 # not
+    over_num: 2 # -> 해당 숫자 이상의 블록 개수부터 합성함
+  background:
+    option: True # -> background 사용 여부
+    num: 100 # -> background 생성 개수
+    existed_path: '' # -> background data가 이미 있어 만들 필요 없는 경우 사용
+    
     
 make_test:
-  make_test: True
-  test_folder_name: merged12
+  make_test: True # test data도 현재 train, val 형식과 맞춰서 생성할지 여부
+  test_folder_name: merged13 # test 파일 저장할 폴더 이름
     
 

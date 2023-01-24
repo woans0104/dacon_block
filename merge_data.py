@@ -9,7 +9,8 @@ class merge_images:
     
     def __init__(self, df, id_col='id', image_path=None, material_max_blocks=3,
                 seed=42, limit_patience = 100, board_size = 2000, x_move_ratio = 0.95,
-                 y_move_ratio = 0.1, default_image_size=400):
+                 y_move_ratio = 0.1, default_image_size=400, background_path=None
+                ):
                 
                 
         self.seed = seed
@@ -19,6 +20,7 @@ class merge_images:
         self.y_move_ratio = y_move_ratio
         self.default_image_size = default_image_size
         self.material_max_blocks = material_max_blocks
+        self.background_path = background_path
     
         self.true_labels = ['A','B','C','D','E','F','G','H','I','J']
         self.cand_dict = {1:([1]), 2:([2],[1,1]), 3:([3],[1,2],[1,1,1]), 4:([4],[1,3],[2,2],[1,1,2]),
@@ -67,7 +69,7 @@ class merge_images:
                 self.pool_dict[sum_num][t_labels] = []
             self.pool_dict[sum_num][t_labels].append(path)
 
-
+        
     
     def make_new_data(self, take_num=0,
                       w_block_size=[240,250,260,270,280],
@@ -179,11 +181,11 @@ class merge_images:
                     rest_label_set.remove(t_label)
 
                 top_down_ind += 1
-
+        
         new_board = np.full((self.board_size,self.board_size,3),255)
         for i,(y,x,z) in enumerate(all_xy_coors):
             new_board[y,x,:] = z
-
+        
         # resize
         x_coors, y_coors, _ = np.where(new_board!=255)
         left_x = np.min(x_coors)
@@ -240,7 +242,9 @@ class merge_images:
         h_default_size = self.default_image_size
         w_default_size = self.default_image_size
         
-        back_ground = np.full((h_default_size, w_default_size,3), 255)
+        
+        # make background
+        
         w_margin = int((w_default_size-w_size)/2)
         h_margin = int((h_default_size-h_size)/2)
 
@@ -261,19 +265,47 @@ class merge_images:
                 w_default_size-=1
             elif w_diff<w_size:
                 w_default_size+=1
+        if not self.background_path:
+            back_ground = np.full((h_default_size, w_default_size,3), 255)
+            back_ground[w_margin:w_default_size-w_margin, h_margin:h_default_size-h_margin,:] = bbox
+        else:
+            background_target = random.choice(self.background_path)
+            back_ground = cv2.imread(background_target)
+            #bbox_y_list, bbox_x_list, _ = np.where(bbox<255)
+            new_bbox, bbox_mask = extract_img(image_name=None, img_example=bbox.astype('uint8'), edge=0)
+            
+            """
+            img_bg = np.full((bbox.shape[0], bbox.shape[1], 3), 0).astype('uint8')
+            bbox_example = bbox.astype('uint8').copy()
+            bbox_example = cv2.cvtColor(bbox_example, cv2.COLOR_BGR2RGB)
+            img_bg_gray=cv2.cvtColor(img_bg, cv2.COLOR_BGR2GRAY)
+            img_gray=cv2.cvtColor(bbox_example, cv2.COLOR_BGR2GRAY)
 
-        back_ground[w_margin:w_default_size-w_margin, h_margin:h_default_size-h_margin,:] = bbox
+            diff_gray=cv2.absdiff(img_bg_gray,img_gray)
+            diff_gray_blur = cv2.GaussianBlur(diff_gray,(5,5),0)
+            diff_gray_blur = cv2.medianBlur(diff_gray_blur, 5)
+            ret, bbox_mask = cv2.threshold(diff_gray_blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+            """
+            bbox_y_list, bbox_x_list = np.where(bbox_mask<255)
+            
+            for y, x in zip(bbox_y_list, bbox_x_list):
+                back_ground[w_margin+y, h_margin+x] = new_bbox[y,x,:]
+
+            #back_ground = np.full((h_default_size, w_default_size,3), 255)
+            #back_ground[w_margin:w_default_size-w_margin, h_margin:h_default_size-h_margin,:] = bbox
 
         return back_ground
     
     
-    
-    
-def extract_img(image_name, edge=10, default_image_size=400):
+
+def extract_img(image_name, edge=10, default_image_size=400, img_example=None):
 
     #image_name = 'TRAIN_00000'
-    img_example = cv2.imread(image_name)
-    img_bg = np.full((default_image_size, default_image_size, 3), 0).astype('uint8')
+    
+    if img_example is None:
+        img_example = cv2.imread(image_name)
+    
+    img_bg = np.full((img_example.shape[0], img_example.shape[1], 3), 0).astype('uint8')
 
     # 
     img_example = cv2.cvtColor(img_example, cv2.COLOR_BGR2RGB)
@@ -286,12 +318,13 @@ def extract_img(image_name, edge=10, default_image_size=400):
     ret, mask = cv2.threshold(diff_gray_blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
     
     # edge 처리 : 블럭을 딸 때 edge 부근 일부도 블럭으로 인식되어 이를 제거함
-    mask[:,:edge] = 255
-    mask[:,-edge:] = 255
-    mask[:edge,:] = 255
-    mask[-edge:,:] = 255
+    if edge>0:
+        mask[:,:edge] = 255
+        mask[:,-edge:] = 255
+        mask[:edge,:] = 255
+        mask[-edge:,:] = 255
 
-    new_img = np.full((default_image_size, default_image_size, 3), 255).astype('uint8')
+    new_img = np.full((img_example.shape[0], img_example.shape[1], 3), 255).astype('uint8')
 
     new_img[np.where(mask==0)] = img_example[np.where(mask==0)]
 

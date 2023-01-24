@@ -19,7 +19,8 @@ from config.load_config import load_yaml, DotDict
 import warnings
 warnings.filterwarnings(action='ignore')
 
-from merge_data import merge_images
+from randimage import get_random_image
+from merge_data import merge_images, extract_img
 
 LABEL_ID = {'A':0, 'B':1, 'C':2, 'D':3, 'E':4, 'F':5, 'G':6, 'H':7, 'I':8 ,'J':9}
 YAML_FILE = 'make_data'
@@ -34,12 +35,6 @@ def seed_everything(seed):
 
 def get_labels(df):
     return df.iloc[:,2:].values
-
-
-
-# train / validation
-
-
 
 
 def make_class_generate_num(df, ratio=1, over_num=6, target_num=0):
@@ -123,19 +118,35 @@ def overlay_data(generate_num_list, merge_data_obj, labels, img_save_path, label
     return img_paths, label_list
 
 
+def make_background(background_save_path, background_num, img_size=(400,400)):
+
+    for i in tqdm(range(background_num)):
+        img = get_random_image(img_size)
+        img_file_name = f'background{i+1}.jpg'
+        img_save_path = f'{os.path.join(background_save_path, img_file_name)}'
+        cv2.imwrite(img_save_path, img*255)
+    
+    return 0
+
 
 
 def main(config):
     
-    
-    seed_everything(config.train.seed) # Seed 고정
-    
+    # seed 고정
+    seed_everything(config.train.seed) 
     save_merged_folder = config.generating.folder_name
-    Path(os.path.join('./data', save_merged_folder)).mkdir(parents=True, exist_ok=True)
+
+    
+    # background folder 생성
+    background_save_path = os.path.join('./data', save_merged_folder, 'background')
+    Path(background_save_path).mkdir(parents=True, exist_ok=True)
+    
+    # data 생성 yaml 파일 저장
     shutil.copy(
         "config/" + YAML_FILE + ".yaml", os.path.join('./data', save_merged_folder, YAML_FILE) + ".yaml"
     )
     
+    # parameter 초기화
     same_class_generate_option = config.generating.same_class_generate.option
     same_class_generate_ratio = config.generating.same_class_generate.ratio
     same_class_generate_over_num = config.generating.same_class_generate.over_num
@@ -147,23 +158,37 @@ def main(config):
     auto_block_size = config.generating.auto_block_size
     val_ratio = config.data.val_ratio
     train_ratio = 1-val_ratio
-    using_existed_merged_exp = config.train.using_existed_merged_exp
     
     rigid_split = config.split_method.rigid_split
     
     make_test = config.make_test.make_test
     test_folder_name = config.make_test.test_folder_name
     
+    background_option = config.generating.background.option
+    background_num = config.generating.background.num
+    background_existed_path = config.generating.background.existed_path
     
+    # background 사용시 background 데이터 생성함
+    background_path_list = []
+    if background_option:
+        make_background(background_save_path, background_num)
+
+        background_path_list = [f'{os.path.join(background_save_path, file)}' for file in os.listdir(background_save_path)]
+    elif not background_option and background_existed_path:
+        background_path_list = [f'{os.path.join(background_save_path, file)}' for file in os.listdir(background_existed_path)]
+    
+
+    # Data 초기화
     labels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']
     # Data Load
     # Train / Validation Split
     df = pd.read_csv(config.data_dir.block_train)
     sums = np.sum(df[labels],axis=1)
     df['sums'] = sums
-
+    
+    # class, 블록개수 기준으로 train, valid 나눔 : 별 효과 없어서 안 쓸 것임
     if rigid_split:
-        
+
         label_list = [[] for _ in range(df.shape[0])]
         for label in labels:
             temp_list = df[label].tolist()
@@ -247,8 +272,20 @@ def main(config):
                 val_inds += target_inds
 
             
-        
+    # 블록 개수 기준으로 train, val 나눔
+    """
+    process
+    - train, val에 해당하는 데이터 나눔 : 가진 데이터 기준으로만 생성할 것임
+    - generate (합성)
+      - train_target_sample_num, val_target_sample_num 기준으로 블록개수 당 generate해야 할 개수 구함
+        - block이 1개인 경우는 제외함
+      - 데이터 generate
+    - train, val에 대해 정한 개수 넘는 블록개수에 해당하는 데이터는 random sample로 개수 조절함
+    - 원본 데이터도 합성한 데이터의 폴더에 저장함
+      - 배경 지정한 경우 배경 씌워서 저장함.
+    """
     else:
+        
         # split train, val
         temp_sums_dict = {}
         sums_list = df['sums'].tolist()
@@ -273,7 +310,8 @@ def main(config):
 
                 val_inds += temp_val_inds
                 train_inds += temp_train_inds
-
+    
+    # 정한 기준으로 train, val 나눔
     train_df = df.loc[train_inds, :].reset_index(drop=True)
     val_df = df.loc[val_inds, :].reset_index(drop=True)
 
@@ -281,6 +319,8 @@ def main(config):
     # generate_list
     train_generate_num_list = []
     val_generate_num_list = []
+    
+    # 생성할 개수 구함
     if same_class_generate_option:
         train_generate_num_list = make_class_generate_num(train_df, 
                                                  ratio=same_class_generate_ratio, 
@@ -290,27 +330,29 @@ def main(config):
                                                      ratio=same_class_generate_ratio, 
                                                      over_num=same_class_generate_over_num,
                                                        target_num=val_target_sample_num)
-
+    
+    # train 생성 객체 초기화 및 생성
     type_ = 'TRAIN'
     train_img_save_path = os.path.join('./data', save_merged_folder, type_, 'images')
     train_label_save_path = os.path.join('./data', save_merged_folder, type_, 'labels')
-    train_merge_obj = merge_images(train_df, image_path='./data/train')
+    train_merge_obj = merge_images(train_df, image_path='./data/train', background_path=background_path_list)
     train_img_paths, train_label_list = overlay_data(train_generate_num_list, train_merge_obj, 
                                                      labels, train_img_save_path, train_label_save_path,
                                                      auto_block_size=auto_block_size, type_=type_)
-
+    
+    # val 생성 객체 초기화
     type_ = 'VAL'
     val_img_save_path = os.path.join('./data', save_merged_folder, type_, 'images')
     val_label_save_path = os.path.join('./data', save_merged_folder, type_, 'labels')
     
-
-    val_merge_obj = merge_images(val_df, image_path='./data/train')
+    
+    val_merge_obj = merge_images(val_df, image_path='./data/train', background_path=background_path_list)
     val_img_paths, val_label_list = overlay_data(val_generate_num_list, val_merge_obj, 
                                      labels, val_img_save_path, val_label_save_path, 
                                  auto_block_size=auto_block_size, type_=type_)
 
     
-    # filtering rows
+    # train_target_sample_num 넘는 경우 제외함
     if train_target_sample_num:
         train_inds = []
         for sums in np.unique(train_df['sums']):
@@ -321,16 +363,30 @@ def main(config):
             train_inds += inds
         train_df = train_df.loc[train_inds,:].reset_index(drop=True)
     
+    # train 원본 데이터를 생성한 폴더 안에 복사함
     train_id_list = train_df['id'].tolist()
     origin_train_image_path = [f'./data/train/{id_}.jpg' for id_ in train_id_list]
     add_train_img_paths = [f'{train_img_save_path}/{id_}.jpg' for id_ in train_id_list]
     for i in range(len(origin_train_image_path)):
         origin_path = origin_train_image_path[i]
         new_path = add_train_img_paths[i]
-        shutil.copy(origin_path, new_path)
+        
+        if not background_path_list:
+            shutil.copy(origin_path, new_path)
+            
+        else:
+            background_target = random.choice(background_path_list)
+            back_ground = cv2.imread(background_target)
+            new_bbox, bbox_mask = extract_img(origin_path)
+            bbox_y_list, bbox_x_list = np.where(bbox_mask<255)
+            
+            for y, x in zip(bbox_y_list, bbox_x_list):
+                back_ground[y, x] = new_bbox[y,x,:]
+            cv2.imwrite(new_path, back_ground)
+        
     add_train_label_list = train_df[labels].values.tolist()
     
-    
+    # val_target_sample_num 넘는 경우 제외함
     if val_target_sample_num:
         val_inds = []
         for sums in np.unique(val_df['sums']):
@@ -342,16 +398,29 @@ def main(config):
         #val_inds = val_df.loc[val_inds,:].reset_index(drop=True)
         val_df = val_df.loc[val_inds,:].reset_index(drop=True)
     
+    # val 원본 데이터를 생성한 폴더 안에 복사함
     val_id_list = val_df['id'].tolist()
     origin_val_image_path = [f'./data/train/{id_}.jpg' for id_ in val_id_list]
     add_val_img_paths = [f'{val_img_save_path}/{id_}.jpg' for id_ in val_df['id'].tolist()]
     for i in range(len(origin_val_image_path)):
         origin_path = origin_val_image_path[i]
         new_path = add_val_img_paths[i]
-        shutil.copy(origin_path, new_path)
+        if not background_path_list:
+            shutil.copy(origin_path, new_path)
+            
+        else:
+            background_target = random.choice(background_path_list)
+            back_ground = cv2.imread(background_target)
+            new_bbox, bbox_mask = extract_img(origin_path)
+            bbox_y_list, bbox_x_list = np.where(bbox_mask<255)
+            
+            for y, x in zip(bbox_y_list, bbox_x_list):
+                back_ground[y, x] = new_bbox[y,x,:]
+            cv2.imwrite(new_path, back_ground)
+            
     add_val_label_list = val_df[labels].values.tolist()
-
     
+    # path 지정 및 label 정보 가진 annotation 저장
     train_img_paths = train_img_paths+add_train_img_paths
     val_img_paths = val_img_paths+add_val_img_paths
     train_label_list = train_label_list+add_train_label_list
@@ -366,7 +435,7 @@ def main(config):
     np.save(f'{train_label_save_path}/train_labels.npy', train_label_list)
     np.save(f'{val_label_save_path}/val_labels.npy', val_label_list)
 
-    
+    # test 데이터도 위와 같은 형식의 annotation 형태로 저장함
     if make_test:
         test_df = pd.read_csv(config.data_dir.block_test)
         type_ = 'TEST'
