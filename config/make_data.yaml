@@ -15,7 +15,7 @@ sampling:
   under_sampling: False # 각 블록 개수에서 train_target_sample_num, val_target_sample_num을 넘어갔을 때 undersampling 할지 여부
   
 generating:
-  folder_name: merged16 # 결과 저장 폴더 이름
+  folder_name: merged17 # 결과 저장 폴더 이름
   train_target_sample_num: 0 # 5000 -> class 당 사용하는 데이터 개수
   val_target_sample_num: 0 #1250 -> merge10 : 0
   auto_block_size: False # block size 자동 조정
@@ -23,19 +23,19 @@ generating:
     option: False # 합성 사용 여부
     ratio: 0 # not
     over_num: 2 # -> 해당 숫자 이상의 블록 개수부터 합성함
-  background:
-    option: True # -> background 사용 여부
-    num: 100 # -> background 생성 개수
-    existed_path: '' # -> background data가 이미 있어 만들 필요 없는 경우 사용
-    val_existed_path: ''
-    split_train_val: False # bool -> train과 valid의 배경을 다르게 할지 여부
+background:
+  train_option: True # -> train : background 사용 여부
+  val_option: True # -> val : background 사용 여부
+  num: 100 # -> background 생성 개수
+  existed_path: './data/table_scene_background_train' # -> train : background data가 이미 있어 만들 필요 없는 경우 사용
+  val_existed_path: './data/table_scene_background_val'  # -> val : background data가 이미 있어 만들 필요 없는 경우 사용
 
 augmentation:
-  train_transform_option: False
-  val_transform_option: True
-  
+  train_transform_option: False # -> train : aug 사용 여부
+  val_transform_option: False # -> val : aug 사용 여부
+
 make_test:
   make_test: True # test data도 현재 train, val 형식과 맞춰서 생성할지 여부
-  test_folder_name: merged16 # test 파일 저장할 폴더 이름
+  test_folder_name: merged17 # test 파일 저장할 폴더 이름
     
 

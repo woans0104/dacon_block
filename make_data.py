@@ -153,13 +153,17 @@ def main(config):
     seed_everything(config.seed) 
     save_merged_folder = config.generating.folder_name
 
-    background_split_train_val = config.generating.background.split_train_val
-    # background folder 생성
-    background_save_path = os.path.join('./data', save_merged_folder, 'TRAIN', 'background')
-    Path(background_save_path).mkdir(parents=True, exist_ok=True)
+    train_background_option = config.background.train_option
+    val_background_option = config.background.val_option
     
+    # background folder 생성
+    background_save_path = ''
+    if train_background_option:
+        background_save_path = os.path.join('./data', save_merged_folder, 'TRAIN', 'background')
+        Path(background_save_path).mkdir(parents=True, exist_ok=True)
+
     val_background_save_path = ''
-    if background_split_train_val:
+    if val_background_option:
         val_background_save_path = os.path.join('./data', save_merged_folder, 'VAL', 'background')
         Path(val_background_save_path).mkdir(parents=True, exist_ok=True)
     
@@ -188,10 +192,11 @@ def main(config):
     make_test = config.make_test.make_test
     test_folder_name = config.make_test.test_folder_name
     
-    background_option = config.generating.background.option
-    background_num = config.generating.background.num
-    background_existed_path = config.generating.background.existed_path
-    val_background_existed_path = config.generating.background.val_existed_path
+    
+    background_num = config.background.num
+    background_existed_path = config.background.existed_path
+    val_background_existed_path = config.background.val_existed_path
+    
     
     train_transform_option = config.augmentation.train_transform_option
     val_transform_option = config.augmentation.val_transform_option
@@ -199,25 +204,38 @@ def main(config):
     # background 사용시 background 데이터 생성함
     background_path_list = []
     val_background_path_list = []
-    if background_option:
-        
+    if train_background_option:
         if background_existed_path:
-            background_path_list = [f'{os.path.join(background_save_path, file)}' for file in os.listdir(background_existed_path)]
+            origin_data_list = os.listdir(background_existed_path)
+            origin_path = [f'{os.path.join(background_existed_path, file)}' for file in origin_data_list]
+            new_path = [f'{os.path.join(background_save_path, file)}' for file in origin_data_list]
+            
+            for i in range(len(origin_path)):
+                shutil.copy(origin_path[i], new_path[i])
+            new_path_data_list = os.listdir(background_save_path)
+            background_path_list = [f'{os.path.join(background_save_path, file)}' for file in new_path_data_list]
+            
+            
         else:
             make_background(background_save_path, background_num)
             background_path_list = [f'{os.path.join(background_save_path, file)}' for file in os.listdir(background_save_path)]
         
-        
+    if val_background_option:
         if val_background_existed_path:
-            val_background_path_list = [f'{os.path.join(background_save_path, file)}' for file in os.listdir(val_background_existed_path)]
-        else:
-            if background_split_train_val:
-                make_background(val_background_save_path, background_num)
-                val_background_path_list = [f'{os.path.join(val_background_save_path, file)}' for file in os.listdir(val_background_save_path)]
-            else:
-                val_background_path_list = background_path_list.copy()
-
             
+            origin_data_list = os.listdir(val_background_existed_path)
+            origin_path = [f'{os.path.join(val_background_existed_path, file)}' for file in origin_data_list]
+            new_path = [f'{os.path.join(val_background_save_path, file)}' for file in origin_data_list]
+
+            for i in range(len(origin_path)):
+                shutil.copy(origin_path[i], new_path[i])
+            new_path_data_list = os.listdir(val_background_save_path)
+            val_background_path_list = [f'{os.path.join(val_background_save_path, file)}' for file in new_path_data_list]
+        else:
+            make_background(val_background_save_path, background_num)
+            val_background_path_list = [f'{os.path.join(val_background_save_path, file)}' for file in os.listdir(val_background_save_path)]
+            #val_background_path_list = background_path_list.copy()
+
     # Data 초기화
     labels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']
     # Data Load
@@ -456,22 +474,22 @@ def main(config):
     for i in tqdm(range(len(origin_val_image_path))):
         origin_path = origin_val_image_path[i]
         new_path = add_val_img_paths[i]
-        if not background_path_list and not val_background_path_list and not transform_option:
+        if not val_background_path_list and not transform_option:
             shutil.copy(origin_path, new_path)
             
         else:
-            if background_path_list or val_background_path_list:
-                background_target = random.choice(val_background_path_list)
-                back_ground = cv2.imread(background_target)
-                new_bbox, bbox_mask = extract_img(origin_path)
-                bbox_y_list, bbox_x_list = np.where(bbox_mask<255)
 
-                for y, x in zip(bbox_y_list, bbox_x_list):
-                    back_ground[y, x] = new_bbox[y,x,:]
-                
+            background_target = random.choice(val_background_path_list)
+            back_ground = cv2.imread(background_target)
+            new_bbox, bbox_mask = extract_img(origin_path)
+            bbox_y_list, bbox_x_list = np.where(bbox_mask<255)
+
+            for y, x in zip(bbox_y_list, bbox_x_list):
+                back_ground[y, x] = new_bbox[y,x,:]
+
             if val_transform_option:
                 back_ground = transform(image=back_ground)['image']
-                
+
             cv2.imwrite(new_path, back_ground)
             
     add_val_label_list = val_df[labels].values.tolist()
