@@ -271,6 +271,7 @@ class merge_images:
         else:
             background_target = random.choice(self.background_path)
             back_ground = cv2.imread(background_target)
+            back_ground = cv2.resize(back_ground, (400,400))
             #bbox_y_list, bbox_x_list, _ = np.where(bbox<255)
             new_bbox, bbox_mask = extract_img(image_name=None, img_example=bbox.astype('uint8'), edge=0)
             

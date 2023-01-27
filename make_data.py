@@ -25,9 +25,9 @@ from merge_data import merge_images, extract_img
 import albumentations as A
 transform = A.Compose([
                     A.OneOf([
-                        A.ColorJitter(p=1),
-                        A.RandomBrightnessContrast(p=1),
-                        A.HueSaturationValue(p=1)
+                        A.ColorJitter(p=1, brightness=(0.2,0.5), contrast=(0.2,0.5), saturation=(0.2,0.5), hue=(0.2,0.5)),
+                        A.RandomBrightnessContrast(p=1, brightness_limit=0.5, contrast_limit=0.5),
+                        A.HueSaturationValue(p=1, hue_shift_limit=40, sat_shift_limit=60, val_shift_limit=40)
                     ],p=.33),
                     A.OneOf([
                         A.Rotate(p=1, limit=(-10,10)),
@@ -207,7 +207,7 @@ def main(config):
     if train_background_option:
         if background_existed_path:
             origin_data_list = os.listdir(background_existed_path)
-            origin_path = [f'{os.path.join(background_existed_path, file)}' for file in origin_data_list]
+            origin_path = [f'{os.path.join(background_existed_path, file)}' for file in origin_data_list if 'ipynb' not in file]
             new_path = [f'{os.path.join(background_save_path, file)}' for file in origin_data_list]
             
             for i in range(len(origin_path)):
@@ -224,7 +224,7 @@ def main(config):
         if val_background_existed_path:
             
             origin_data_list = os.listdir(val_background_existed_path)
-            origin_path = [f'{os.path.join(val_background_existed_path, file)}' for file in origin_data_list]
+            origin_path = [f'{os.path.join(val_background_existed_path, file)}' for file in origin_data_list if 'ipynb' not in file]
             new_path = [f'{os.path.join(val_background_save_path, file)}' for file in origin_data_list]
 
             for i in range(len(origin_path)):
@@ -441,6 +441,7 @@ def main(config):
         else:
             background_target = random.choice(background_path_list)
             back_ground = cv2.imread(background_target)
+            back_ground = cv2.resize(back_ground, (400,400))
             new_bbox, bbox_mask = extract_img(origin_path)
             bbox_y_list, bbox_x_list = np.where(bbox_mask<255)
             
@@ -481,6 +482,7 @@ def main(config):
 
             background_target = random.choice(val_background_path_list)
             back_ground = cv2.imread(background_target)
+            back_ground = cv2.resize(back_ground, (400,400))
             new_bbox, bbox_mask = extract_img(origin_path)
             bbox_y_list, bbox_x_list = np.where(bbox_mask<255)
 
