@@ -14,7 +14,12 @@ from randaugment import RandAugment
 from torch.cuda.amp import GradScaler, autocast
 import yaml
 import shutil
+import pickle
 from pathlib import Path
+from sklearn.metrics import accuracy_score
+
+import albumentations as A
+from albumentations.pytorch import transforms as a_transforms
 
 
 parser = argparse.ArgumentParser(description='PyTorch MS_COCO Training')
@@ -47,6 +52,11 @@ def main():
     save_folder_name = config['save']['folder_name']
     epoch = config['train']['epoch']
     lr = config['train']['lr']
+    cut_prob = config['train']['cut_prob']
+    
+    custom_aug_option = config['augmentation']['custom_option']
+    
+    fine_tuning = config['train']['fine_tuning']
     
     img_size = config['model']['img_size']
     batch_size = config['train']['batch_size']
@@ -64,8 +74,15 @@ def main():
     #model = create_model(args).cuda()
     model = create_model(model_config).cuda()
     # local_rank = torch.distributed.get_rank()
-    # torch.cuda.set_device(0)
+    # torch.cuda.set_device(1)
     # model = torch.nn.DataParallel(model,device_ids=[0])
+    aa = []
+    if fine_tuning:
+        for i, (name, param) in enumerate(model.named_parameters()):
+            if 'embed_standart' in name or 'query_embed' in name:
+                print(f'{name} is not freeze')
+            else :
+                param.requires_grad = False
 
     print('done')
 
@@ -77,23 +94,56 @@ def main():
     #data_path_val = f'{args.data}/val2014'  # args.data
     #data_path_train = f'{args.data}/train2014'  # args.data
     
-
-    val_dataset = CustomDataset(val_data_list_dir,
-                                val_labels_path,
-                                transforms.Compose([
+    if custom_aug_option:
+        train_transform = A.Compose([
+                        
+                        A.OneOf([
+                            A.ColorJitter(p=1, brightness=(0.2,0.5), contrast=(0.2,0.5), saturation=(0.2,0.5), hue=(0.2,0.5)),
+                            A.RandomBrightnessContrast(p=1, brightness_limit=0.5, contrast_limit=0.5),
+                            A.HueSaturationValue(p=1, hue_shift_limit=40, sat_shift_limit=60, val_shift_limit=40),
+                            A.Cutout(p=1, num_holes=16, max_h_size=16, max_w_size=16),
+                            A.RandomCrop(p=1, height=320, width=320)
+                        ],p=.33),
+                        A.OneOf([
+                            A.Rotate(p=1, limit=(-20,20)),
+                            A.Flip(p=1)
+                        ], p=.33),
+                        A.OneOf([
+                            A.Affine(p=1),
+                            A.ElasticTransform(p=1)
+                        ], p=.33),
+                        A.Resize(img_size, img_size),
+                        a_transforms.ToTensorV2()
+                        ])
+        
+        val_transform = A.Compose([
+                        A.Resize(img_size, img_size),
+                        a_transforms.ToTensorV2()
+                        ])
+        
+    else:
+        train_transform = transforms.Compose([
+                          transforms.Resize((img_size, img_size)),
+                          CutoutPIL(cutout_factor=0.5),
+                          RandAugment(),
+                          transforms.ToTensor(),
+                          # normalize,
+                      ])
+        
+        val_transform = transforms.Compose([
                                     transforms.Resize((img_size, img_size)),
                                     transforms.ToTensor(),
                                     # normalize, # no need, toTensor does normalization
-                                ]))
+                                ])
+        
+    val_dataset = CustomDataset(val_data_list_dir,
+                                val_labels_path,
+                                val_transform, custom_transform=custom_aug_option
+                                )
+    
     train_dataset = CustomDataset(train_data_list_dir,
                                   train_labels_path,
-                                  transforms.Compose([
-                                      transforms.Resize((img_size, img_size)),
-                                      CutoutPIL(cutout_factor=0.5),
-                                      RandAugment(),
-                                      transforms.ToTensor(),
-                                      # normalize,
-                                  ]))
+                                  train_transform, custom_transform=custom_aug_option)
  
     print("len(val_dataset)): ", len(val_dataset))
     print("len(train_dataset)): ", len(train_dataset))
@@ -108,12 +158,12 @@ def main():
         num_workers=workers, pin_memory=False)
 
     # Actuall Training
-    train_multi_label_coco(model, train_loader, val_loader, lr, result_path, epoch)
+    train_multi_label_coco(model, train_loader, val_loader, lr, result_path, epoch, cut_prob)
 
 
-def train_multi_label_coco(model, train_loader, val_loader, lr, save_path, Epochs):
+def train_multi_label_coco(model, train_loader, val_loader, lr, save_path, Epochs, cut_prob):
     ema = ModelEma(model, 0.9997)  # 0.9997^641=0.82
-
+    Sig = torch.nn.Sigmoid()
     # set optimizer
     #Epochs = 40
     weight_decay = 1e-4
@@ -123,22 +173,35 @@ def train_multi_label_coco(model, train_loader, val_loader, lr, save_path, Epoch
     steps_per_epoch = len(train_loader)
     scheduler = lr_scheduler.OneCycleLR(optimizer, max_lr=lr, steps_per_epoch=steps_per_epoch, epochs=Epochs,
                                         pct_start=0.2)
-
+    
+    train_accs = []
+    val_accs = []
+    train_losses = []
+    val_accs = []
+    #train_maps = []
+    val_maps = []
     highest_mAP = 0
     trainInfoList = []
     scaler = GradScaler()
+    best_val_acc = 0
     for epoch in range(Epochs):
+        acc_sum = 0
+        length = 0
+        train_loss_sum = 0
+        ind = 1
         for i, (inputData, target, _) in enumerate(train_loader):
+            if inputData.dtype!=torch.HalfTensor:
+                inputData = inputData.type(torch.HalfTensor)
             inputData = inputData.cuda()
             target = target.cuda()
-
+            
             #target = target.max(dim=1)[0]
             with autocast():  # mixed precision
                 output = model(inputData).float()  # sigmoid will be done in loss !
-
+                
             loss = criterion(output, target)
             model.zero_grad()
-
+            
             scaler.scale(loss).backward()
             # loss.backward()
 
@@ -147,8 +210,15 @@ def train_multi_label_coco(model, train_loader, val_loader, lr, save_path, Epoch
             # optimizer.step()
 
             scheduler.step()
-
             ema.update(model)
+            
+            output_regular = Sig(output)
+            acc_preds = (output_regular>cut_prob).type(torch.int)
+            acc_sum += torch.sum(torch.mean((target==acc_preds).type(torch.float), axis=1)).item()
+            length += output_regular.shape[0]
+            
+            train_loss_sum+=loss.item()
+            ind += 1
             # store information
             if i % 100 == 0:
                 trainInfoList.append([epoch, i, loss.item()])
@@ -156,7 +226,7 @@ def train_multi_label_coco(model, train_loader, val_loader, lr, save_path, Epoch
                       .format(epoch, Epochs, str(i).zfill(3), str(steps_per_epoch).zfill(3),
                               scheduler.get_last_lr()[0], \
                               loss.item()))
-
+                
         try:
             torch.save(model.state_dict(), os.path.join(save_path,
                 'models', 'model-{}-{}.ckpt'.format(epoch + 1, i + 1)))
@@ -165,42 +235,71 @@ def train_multi_label_coco(model, train_loader, val_loader, lr, save_path, Epoch
 
         model.eval()
 
-        mAP_score = validate_multi(val_loader, model, ema)
+        mAP_score, val_acc = validate_multi(val_loader, model, ema, cut_prob)
         model.train()
-        if mAP_score > highest_mAP:
-            highest_mAP = mAP_score
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
             try:
                 torch.save(model.state_dict(), os.path.join(save_path, 
                     'models', 'model-highest.ckpt'))
             except:
                 pass
-        print('current_mAP = {:.2f}, highest_mAP = {:.2f}\n'.format(mAP_score, highest_mAP))
+        
+        train_acc = acc_sum/length
+        train_loss = train_loss_sum/ind
+        train_accs.append(train_acc)
+        train_losses.append(train_loss)
+        val_accs.append(val_acc)
+        val_maps.append(mAP_score)
+        
+        with open(os.path.join(save_path, 'train_acc.pkl'), 'wb') as f:
+            pickle.dump(train_accs, f)
+        with open(os.path.join(save_path, 'train_loss.pkl'), 'wb') as f:
+            pickle.dump(train_losses, f)
+        with open(os.path.join(save_path, 'val_acc.pkl'), 'wb') as f:
+            pickle.dump(val_accs, f)
+        with open(os.path.join(save_path, 'val_map.pkl'), 'wb') as f:
+            pickle.dump(val_maps, f)
+        print('current_mAP = {:.2f}, highest_mAP = {:.2f}'.format(mAP_score, highest_mAP))
+        print('current_train accuracy = {:.2f}'.format(train_acc))
+        print('current_val_accuracy = {:.2f}, highest_val_accuracy = {:.2f}\n'.format(val_acc, best_val_acc))
+        
 
-
-def validate_multi(val_loader, model, ema_model):
+def validate_multi(val_loader, model, ema_model, cut_prob):
     print("starting validation")
     Sig = torch.nn.Sigmoid()
     preds_regular = []
     preds_ema = []
     targets = []
+    acc_sum = 0
+    length = 0
     for i, (input, target, _) in enumerate(val_loader):
+        if input.dtype!=torch.HalfTensor:
+            input = input.type(torch.HalfTensor)
         target = target
 
         # compute output
         with torch.no_grad():
             with autocast():
-                output_regular = Sig(model(input.cuda())).cpu()
+                output = model(input.cuda())
+                output_regular = Sig(output).cpu()
                 output_ema = Sig(ema_model.module(input.cuda())).cpu()
+        
 
         # for mAP calculation
         preds_regular.append(output_regular.cpu().detach())
         preds_ema.append(output_ema.cpu().detach())
         targets.append(target.cpu().detach())
 
+        acc_preds = (output_regular>cut_prob).type(torch.int)
+        acc_sum += torch.sum(torch.mean((target==acc_preds).type(torch.float), axis=1)).item()
+        length += output_regular.shape[0]
+
+    acc = acc_sum/length
     mAP_score_regular = mAP(torch.cat(targets).numpy(), torch.cat(preds_regular).numpy())
     mAP_score_ema = mAP(torch.cat(targets).numpy(), torch.cat(preds_ema).numpy())
     print("mAP score regular {:.2f}, mAP score EMA {:.2f}".format(mAP_score_regular, mAP_score_ema))
-    return max(mAP_score_regular, mAP_score_ema)
+    return max(mAP_score_regular, mAP_score_ema), acc
 
 
 if __name__ == '__main__':

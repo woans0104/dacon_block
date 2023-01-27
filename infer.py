@@ -7,6 +7,9 @@ import torch.nn.parallel
 import torch.optim
 import torch.utils.data.distributed
 
+import albumentations as A
+from albumentations.pytorch import transforms as a_transforms
+
 import pandas as pd
 
 from src_files.helper_functions.bn_fusion import fuse_bn_recursively
@@ -84,6 +87,7 @@ def main():
     img_size = train_config['model']['img_size']
     model_name = train_config['model']['model_name']
     train_config['model']['model_path'] = model_path
+    custom_aug_option = train_config['augmentation']['custom_option']
     
     result_path = os.path.join('./result', 'infer', save_folder_name)
     Path(result_path).mkdir(parents=True, exist_ok=True)
@@ -103,19 +107,35 @@ def main():
     model = model.cpu()
     model = InplacABN_to_ABN(model)
     model = fuse_bn_recursively(model)
-    model = model.cuda().eval()
+    model = model.cuda().half().eval()
     #######################################################
     print('done')
 
     
+    
+    
+    if custom_aug_option:
+        
+        test_transform = A.Compose([
+                        A.Resize(img_size, img_size),
+                        a_transforms.ToTensorV2()
+                        ])
+
+    else:
+        test_transform = transforms.Compose([
+                          transforms.Resize((img_size, img_size)),
+                          CutoutPIL(cutout_factor=0.5),
+                          RandAugment(),
+                          transforms.ToTensor(),
+                          # normalize,
+                      ])
+    
     # doing inference
     infer_dataset = CustomDataset(infer_data_list_dir,
                                   infer_labels_path,
-                                  transforms.Compose([
-                                    transforms.Resize((img_size, img_size)),
-                                    transforms.ToTensor(),
+                                  test_transform, custom_transform=custom_aug_option
                                     # normalize, # no need, toTensor does normalization
-                                ]))
+                                )
     
     infer_loader = torch.utils.data.DataLoader(
         infer_dataset, batch_size=batch_size, shuffle=False,
@@ -148,11 +168,12 @@ def infer_multi(val_loader, model, target_existed, th):
     for i, obj in enumerate(val_loader):
         if target_existed:
             input, target, file_name = obj
-            input = input.cuda()
             target = target.cuda()
         else:
             input, file_name = obj
-            input = input.cuda()
+        if input.dtype!=torch.HalfTensor:
+            input = input.type(torch.HalfTensor)
+        input = input.cuda()
         # compute output
         with torch.no_grad():
             

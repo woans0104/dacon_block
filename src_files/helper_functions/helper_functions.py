@@ -4,6 +4,7 @@ import random
 import time
 from copy import deepcopy
 import pickle
+import cv2
 
 import numpy as np
 from PIL import Image
@@ -97,12 +98,14 @@ class AverageMeter(object):
 
 class CustomDataset(data.Dataset):
     def __init__(self, data_list_dir, labels_path=None,
-                transform=None, target_transform=None):
+                transform=None, target_transform=None,
+                custom_transform=False):
         with open(data_list_dir, 'rb') as f:
             self.coco = pickle.load(f)
         self.input_transform = transform
         self.labels_path = labels_path
         self.target_transform = target_transform
+        self.custom_transform = custom_transform
         if self.labels_path:
             self.labels = np.load(self.labels_path).astype(np.float64)
         else:
@@ -116,12 +119,21 @@ class CustomDataset(data.Dataset):
     def __getitem__(self, index):
         #input = self.coco[index][0]
         file_id = self.coco[index]
-        input = Image.open(file_id).convert('RGB')
+        
         
 
         if self.input_transform:
-            input = self.input_transform(input)
-        
+            if self.custom_transform:
+                input = cv2.imread(file_id)
+                input = cv2.cvtColor(input, cv2.COLOR_BGR2RGB)
+                input = self.input_transform(image=input)['image']
+            else:
+                input = Image.open(file_id).convert('RGB')
+                input = self.input_transform(input)
+        else:
+            input = Image.open(file_id).convert('RGB')
+            
+            
         if self.labels_path:
             target = self.labels[index]
             if self.target_transform is not None:
