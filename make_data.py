@@ -54,7 +54,7 @@ def get_labels(df):
     return df.iloc[:,2:].values
 
 
-def make_class_generate_num(df, ratio=1, over_num=6, target_num=0):
+def make_class_generate_num(df, ratio=1, over_num=6, target_nums=0):
     """
     target_num값 설정되면 ratio보다 우선됨
     """
@@ -74,7 +74,11 @@ def make_class_generate_num(df, ratio=1, over_num=6, target_num=0):
             continue
         
         now_num = 0
-
+        
+        if isinstance(target_nums, int):
+            target_num = target_nums
+        else:
+            target_num = target_nums[i]
         if num in class_values:  
             now_num = class_values[num]
         if num in index_set:
@@ -178,8 +182,22 @@ def main(config):
     same_class_generate_ratio = config.generating.same_class_generate.ratio
     same_class_generate_over_num = config.generating.same_class_generate.over_num
     
-    train_target_sample_num = config.generating.train_target_sample_num
-    val_target_sample_num = config.generating.val_target_sample_num
+    train_target_sample_num_list = config.generating.train_target_sample_num
+    val_target_sample_num_list = config.generating.val_target_sample_num
+    
+    x_move_ratio = config.generating.x_move_ratio
+    
+    if isinstance(train_target_sample_num_list, int):
+        train_target_sample_num = train_target_sample_num_list
+    else:
+        train_target_sample_num = sum(train_target_sample_num_list)
+        
+    if isinstance(val_target_sample_num_list, int):
+        val_target_sample_num = val_target_sample_num_list
+    else:
+        val_target_sample_num = sum(val_target_sample_num_list)
+    
+    
     all_target_sample_num = train_target_sample_num + val_target_sample_num
     
     auto_block_size = config.generating.auto_block_size
@@ -390,17 +408,18 @@ def main(config):
         train_generate_num_list = make_class_generate_num(train_df, 
                                                  ratio=same_class_generate_ratio, 
                                                  over_num=same_class_generate_over_num,
-                                                     target_num=train_target_sample_num)
+                                                     target_nums=train_target_sample_num_list)
         val_generate_num_list = make_class_generate_num(val_df, 
                                                      ratio=same_class_generate_ratio, 
                                                      over_num=same_class_generate_over_num,
-                                                       target_num=val_target_sample_num)
+                                                       target_nums=val_target_sample_num_list)
     
     # train 생성 객체 초기화 및 생성
     type_ = 'TRAIN'
     train_img_save_path = os.path.join('./data', save_merged_folder, type_, 'images')
     train_label_save_path = os.path.join('./data', save_merged_folder, type_, 'labels')
-    train_merge_obj = merge_images(train_df, image_path='./data/train', background_path=background_path_list)
+    train_merge_obj = merge_images(train_df, image_path='./data/train', background_path=background_path_list,
+                                  x_move_ratio=x_move_ratio)
     train_img_paths, train_label_list = overlay_data(train_generate_num_list, train_merge_obj, 
                                                      labels, train_img_save_path, train_label_save_path,
                                                      auto_block_size=auto_block_size, type_=type_)
@@ -410,7 +429,8 @@ def main(config):
     val_img_save_path = os.path.join('./data', save_merged_folder, type_, 'images')
     val_label_save_path = os.path.join('./data', save_merged_folder, type_, 'labels')
 
-    val_merge_obj = merge_images(val_df, image_path='./data/train', background_path=val_background_path_list)
+    val_merge_obj = merge_images(val_df, image_path='./data/train', background_path=val_background_path_list,
+                                x_move_ratio=x_move_ratio)
     val_img_paths, val_label_list = overlay_data(val_generate_num_list, val_merge_obj, 
                                      labels, val_img_save_path, val_label_save_path, 
                                  auto_block_size=auto_block_size, type_=type_)

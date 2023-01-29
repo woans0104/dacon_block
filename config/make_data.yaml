@@ -15,14 +15,15 @@ sampling:
   under_sampling: False # 각 블록 개수에서 train_target_sample_num, val_target_sample_num을 넘어갔을 때 undersampling 할지 여부
   
 generating:
-  folder_name: merged22 # 결과 저장 폴더 이름
-  train_target_sample_num: 6000 # 5000 -> class 당 사용하는 데이터 개수
-  val_target_sample_num: 1500 #1250 -> merge10 : 0
+  folder_name: merged35 # 결과 저장 폴더 이름
+  train_target_sample_num: [6000,6000,6000,6000,6000,6000,6000,6000,6000,6000] # 5000 -> class 당 사용하는 데이터 개수
+  val_target_sample_num: [1250,1250,1250,1250,1250,1250,1250,1250,1250,1250] #1250 -> merge10 : 0
   auto_block_size: False # block size 자동 조정
+  x_move_ratio: [0.1,0.2,0.3,0.4,0.5] # [0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5]
   same_class_generate: 
     option: True # 합성 사용 여부
     ratio: 0 # not
-    over_num: 2 # -> 해당 숫자 이상의 블록 개수부터 합성함
+    over_num: 1 # -> 해당 숫자 이상의 블록 개수부터 합성함
 background:
   train_option: True # -> train : background 사용 여부
   val_option: True # -> val : background 사용 여부
@@ -32,10 +33,10 @@ background:
 
 augmentation:
   train_transform_option: False # -> train : aug 사용 여부
-  val_transform_option: True # -> val : aug 사용 여부
+  val_transform_option: False # -> val : aug 사용 여부
 
 make_test:
   make_test: True # test data도 현재 train, val 형식과 맞춰서 생성할지 여부
-  test_folder_name: merged22 # test 파일 저장할 폴더 이름
+  test_folder_name: merged35 # test 파일 저장할 폴더 이름
     
 

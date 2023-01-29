@@ -23,7 +23,7 @@ class merge_images:
         self.background_path = background_path
     
         self.true_labels = ['A','B','C','D','E','F','G','H','I','J']
-        self.cand_dict = {1:([1],), 2:([2],[1,1]), 3:([3],[1,2],[1,1,1]), 4:([4],[1,3],[2,2],[1,1,2]),
+        self.cand_dict = {1:([1]), 2:([2],[1,1]), 3:([3],[1,2],[1,1,1]), 4:([4],[1,3],[2,2],[1,1,2]),
                     5:([4,1],[3,2],[1,1,3],[1,2,2]), 6:([4,2],[3,3],[1,1,4],[1,2,3],[2,2,2]), 
                      7:([4,3],[1,2,4],[2,2,3]), 8:([4,4],[3,3,2],[4,2,2],[4,3,1]),
                     9:([4,4,1],[4,3,2]), 10:([4,4,2],[3,4,3])}
@@ -88,7 +88,7 @@ class merge_images:
         
         # extract block stack candidates
         rest_cands = random.choice(self.cand_dict[take_num])
-
+        
         all_xy_coors = []
         past_left = 500
         past_right = 0
@@ -98,11 +98,7 @@ class merge_images:
         for right_left_ind, choice_num in enumerate(rest_cands):
             if right_left_ind>0:
                 past_x_diff = past_right-past_left
-                if isinstance(self.x_move_ratio, float):
-                    x_move_ratio = self.x_move_ratio
-                else:
-                    x_move_ratio = np.random.choice(self.x_move_ratio)
-                past_x_move = int(past_x_diff*x_move_ratio)
+                past_x_move = int(past_x_diff*self.x_move_ratio)
                 past_left = past_left + past_x_move
                 past_right = past_right + past_x_move
                 past_median = past_left + int((past_right-past_left)/2)

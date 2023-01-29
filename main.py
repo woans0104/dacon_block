@@ -90,7 +90,6 @@ def train(config, model, optimizer, train_loader, val_loader, scheduler, device)
                 if config.wandb_opt:
                     wandb.log({'train_step': train_step, 'trn_mean_loss': mean_loss})
 
-
             train_step += 1
 
 
