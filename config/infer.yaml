@@ -1,11 +1,11 @@
 save:
-  folder_name: merged21
+  folder_name: merged30_test
   
 train:
-  folder_name: merged21
+  folder_name: merged30
   
 data_dir:
-  data_list_dir: ./data/merged21/TEST/labels/test_list.pkl
+  data_list_dir: ./data/merged30/TEST/labels/test_list.pkl
   labels_path: False
 
 infer:
@@ -13,4 +13,4 @@ infer:
   top_k : 10
   batch_size: 48
   workers: 8
-  model_path: ./result/train/merged21/models/model-highest.ckpt
+  model_path: ./result/train/merged30/models/model-highest.ckpt    #model-highest.ckpt

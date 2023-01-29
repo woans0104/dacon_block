@@ -16,6 +16,7 @@ import yaml
 import shutil
 import pickle
 from pathlib import Path
+import numpy as np
 from sklearn.metrics import accuracy_score
 
 import albumentations as A
@@ -39,6 +40,41 @@ parser = argparse.ArgumentParser(description='PyTorch MS_COCO Training')
 #parser.add_argument('--decoder-embedding', default=768, type=int)
 #parser.add_argument('--zsl', default=0, type=int)
 
+
+def rand_bbox(size, lam):
+    W = size[2]
+    H = size[3]
+    cut_rat = np.sqrt(1. - lam)
+
+    cut_w = np.int64(W * cut_rat)
+    cut_h = np.int64(H * cut_rat)
+
+    # uniform
+    cx = np.random.randint(W)
+    cy = np.random.randint(H)
+
+    bbx1 = np.clip(cx - cut_w // 2, 0, W)
+    bby1 = np.clip(cy - cut_h // 2, 0, H)
+    bbx2 = np.clip(cx + cut_w // 2, 0, W)
+    bby2 = np.clip(cy + cut_h // 2, 0, H)
+    return bbx1, bby1, bbx2, bby2
+
+
+def cutmix(data, target, alpha):
+    indices = torch.randperm(data.size(0))
+    shuffled_data = data[indices]
+    shuffled_target = target[indices]
+
+    lam = np.clip(np.random.beta(alpha, alpha),0.3,0.6)
+    bbx1, bby1, bbx2, bby2 = rand_bbox(data.size(), lam)
+    new_data = data.clone()
+    new_data[:, :, bby1:bby2, bbx1:bbx2] = data[indices, :, bby1:bby2, bbx1:bbx2]
+    # adjust lambda to exactly match pixel ratio
+    lam = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (data.size()[-1] * data.size()[-2]))
+    targets = (target, shuffled_target, lam)
+
+    return new_data, targets
+
 def main():
     args = parser.parse_args()
     YAML_FILE = 'train.yaml'
@@ -55,6 +91,11 @@ def main():
     cut_prob = config['train']['cut_prob']
     
     custom_aug_option = config['augmentation']['custom_option']
+    custom_aug_prob = config['augmentation']['prob']
+    
+    cutmix_option = config['augmentation']['cutmix']['option']
+    cutmix_epoch = config['augmentation']['cutmix']['epoch']
+    cutmix_prob = config['augmentation']['cutmix']['prob']
     
     fine_tuning = config['train']['fine_tuning']
     
@@ -103,15 +144,20 @@ def main():
                             A.HueSaturationValue(p=1, hue_shift_limit=40, sat_shift_limit=60, val_shift_limit=40),
                             A.Cutout(p=1, num_holes=16, max_h_size=16, max_w_size=16),
                             A.RandomCrop(p=1, height=320, width=320)
-                        ],p=.33),
+                        ],p=custom_aug_prob),
                         A.OneOf([
                             A.Rotate(p=1, limit=(-20,20)),
                             A.Flip(p=1)
-                        ], p=.33),
+                        ], p=custom_aug_prob),
                         A.OneOf([
                             A.Affine(p=1),
-                            A.ElasticTransform(p=1)
-                        ], p=.33),
+                            A.ElasticTransform(p=1),
+                            # add
+                            A.ShiftScaleRotate(p=1, shift_limit=0.09, scale_limit=0.2, rotate_limit=90),
+                            A.PiecewiseAffine(p=1),
+                            A.GridDistortion(p=1)
+                        ], p=custom_aug_prob),
+                        # Add
                         A.Resize(img_size, img_size),
                         a_transforms.ToTensorV2()
                         ])
@@ -158,10 +204,12 @@ def main():
         num_workers=workers, pin_memory=False)
 
     # Actuall Training
-    train_multi_label_coco(model, train_loader, val_loader, lr, result_path, epoch, cut_prob)
+    train_multi_label_coco(model, train_loader, val_loader, lr, result_path, epoch, cut_prob,
+                          cutmix_option, cutmix_epoch, cutmix_prob)
 
 
-def train_multi_label_coco(model, train_loader, val_loader, lr, save_path, Epochs, cut_prob):
+def train_multi_label_coco(model, train_loader, val_loader, lr, save_path, Epochs, cut_prob,
+                          cutmix_option=False, cutmix_epoch=0, cutmix_prob=0):
     ema = ModelEma(model, 0.9997)  # 0.9997^641=0.82
     Sig = torch.nn.Sigmoid()
     # set optimizer
@@ -190,16 +238,29 @@ def train_multi_label_coco(model, train_loader, val_loader, lr, save_path, Epoch
         train_loss_sum = 0
         ind = 1
         for i, (inputData, target, _) in enumerate(train_loader):
+            cutmix_decision = False
+            
+            
             if inputData.dtype!=torch.HalfTensor:
                 inputData = inputData.type(torch.HalfTensor)
+            
             inputData = inputData.cuda()
             target = target.cuda()
+            
+            if cutmix_epoch-1>=epoch and cutmix_option:
+                cutmix_cur_prob = np.random.uniform()
+                if cutmix_prob<=cutmix_cur_prob:
+                    inputData, mix_targets = cutmix(inputData, target, 1.0)
+                    cutmix_decision = True
             
             #target = target.max(dim=1)[0]
             with autocast():  # mixed precision
                 output = model(inputData).float()  # sigmoid will be done in loss !
-                
-            loss = criterion(output, target)
+            
+            if cutmix_decision:
+                loss = criterion(output, mix_targets[0])*mix_targets[2] + criterion(output, mix_targets[1])*(1-mix_targets[2])
+            else:
+                loss = criterion(output, target)
             model.zero_grad()
             
             scaler.scale(loss).backward()

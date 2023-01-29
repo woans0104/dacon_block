@@ -1,11 +1,11 @@
 data_dir:
-  train_data_list_dir: ./data/merged21/TRAIN/labels/train_list.pkl
-  train_labels_path: ./data/merged21/TRAIN/labels/train_labels.npy
-  val_data_list_dir: ./data/merged21/VAL/labels/val_list.pkl
-  val_labels_path: ./data/merged21/VAL/labels/val_labels.npy
+  train_data_list_dir: ./data/merged30/TRAIN/labels/train_list.pkl
+  train_labels_path: ./data/merged30/TRAIN/labels/train_labels.npy
+  val_data_list_dir: ./data/merged30/VAL/labels/val_list.pkl
+  val_labels_path: ./data/merged30/VAL/labels/val_labels.npy
   
 save:
-  folder_name: merged21
+  folder_name: merged30
   
 model:
   model_name: tresnet_l
@@ -19,9 +19,14 @@ model:
   
 augmentation:
   custom_option: True
+  prob: 0.33  # 0.33
+  cutmix:
+    option: False
+    epoch: 10
+    prob: 0.5
 
 train:
-  epoch: 30
+  epoch: 25
   lr: 0.0001
   batch_size: 32
   workers: 8
